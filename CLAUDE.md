@@ -18,7 +18,7 @@ config/link_watch_pages.txt  -->  monitor/link_watch.py  -->  notifier/link_aler
 
 ## The one thing to keep working
 
-Every ~10 minutes (configurable), for each page in `config/link_watch_pages.txt`:
+Every ~1 minute (configurable), for each page in `config/link_watch_pages.txt`:
 1. Render the page with a headless browser (KEA pages are JS-rendered and
    robots-block plain `requests` fetches).
 2. Extract every `<a href>` link on the page.
@@ -74,8 +74,8 @@ kea-link-watch/
 ├── README.md
 ├── README_OFFICE.txt      # plain-English operator guide (office PC)
 ├── SETUP.bat              # run once: venv, deps, playwright, config/.env
-├── START_MONITOR.bat      # everyday visible run (--loop --interval 900)
-├── INSTALL_AUTOSTART.bat  # register Task Scheduler job (--once every 15 min, no window)
+├── START_MONITOR.bat      # everyday visible run (--loop --interval 60)
+├── INSTALL_AUTOSTART.bat  # register Task Scheduler job (--once every 1 min, no window)
 ├── UNINSTALL_AUTOSTART.bat# remove that task
 ├── setup.sh / start_monitor.sh   # Linux/macOS bonus parity
 ├── config/
@@ -107,7 +107,7 @@ python -m playwright install chromium
 
 PYTHONPATH=src python -m neet_pipeline.run_monitor --baseline   # first run only, or to deliberately reset
 PYTHONPATH=src python -m neet_pipeline.run_monitor --once       # single scan (cron/Task Scheduler)
-PYTHONPATH=src python -m neet_pipeline.run_monitor --loop [--interval 600]
+PYTHONPATH=src python -m neet_pipeline.run_monitor --loop [--interval 60]
 ```
 
 `--pages` overrides which `link_watch_pages.txt` to read (default:

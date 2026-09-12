@@ -93,7 +93,7 @@ OPTION A -- Run it now, watch it work (a window stays open)
 
    Double-click START_MONITOR.bat
 
-   A window opens and stays open, checking every 15 minutes. You
+   A window opens and stays open, checking every 1 minute. You
    can leave this window open in the background as long as you like.
    CLOSING THE WINDOW STOPS THE MONITOR. Use this option if you want
    to watch it, or for a quick one-off run.
@@ -104,7 +104,7 @@ OPTION B -- Set it and forget it (no window, always running)
    Double-click INSTALL_AUTOSTART.bat  (do this ONCE)
 
    This registers the monitor to run automatically in the background,
-   every 15 minutes, with NO window to keep open -- even after this
+   every 1 minute, with NO window to keep open -- even after this
    computer restarts (as long as someone is logged in, which on a
    24/7 office PC is basically always). This is the recommended way
    to run it long-term.
@@ -118,7 +118,7 @@ use Option B (INSTALL_AUTOSTART.bat) and forget about it.
 
 WHAT "THE GREEN CHECK IN TELEGRAM" MEANS
 ------------------------------------------------------------------------
-Every 15 minutes, the monitor posts a short status line to the
+Every 1 minute, the monitor posts a short status line to the
 HEALTH Telegram group:
 
    [Green check] Run #12 OK -- everything checked fine this time.
@@ -129,12 +129,12 @@ new was found. The MAIN Telegram group is where real alerts appear
 (a newly-added link on one of the watched pages).
 
 If you stop seeing the green check messages for more than about
-30 minutes, something has stopped -- see below.
+5 minutes, something has stopped -- see below.
 
 
 IF SOMETHING GOES WRONG
 ------------------------------------------------------------------------
-- No green checks for 30+ minutes:
+- No green checks for 5+ minutes:
     The computer may have gone to sleep, lost internet, or the
     window (if using Option A) got closed. Check the computer is
     on, connected to the internet, and re-run START_MONITOR.bat

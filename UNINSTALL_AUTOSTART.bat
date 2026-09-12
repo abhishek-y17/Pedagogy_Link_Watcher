@@ -10,7 +10,7 @@ echo ============================================================
 echo This removes the Windows Task Scheduler job named
 echo "%TASK_NAME%" that INSTALL_AUTOSTART.bat created.
 echo It does NOT delete this folder, your data, or your tokens --
-echo it only stops the automatic every-15-minutes background runs.
+echo it only stops the automatic every-1-minute background runs.
 echo ============================================================
 echo.
 

@@ -8,7 +8,7 @@ echo ============================================================
 echo  KEA Link Watch -- install "always running" mode
 echo ============================================================
 echo This registers a Windows Task Scheduler job that:
-echo   - runs one check every 15 minutes
+echo   - runs one check every 1 minute
 echo   - starts automatically when this user logs in
 echo   - keeps running with NO window open
 echo   - keeps working after this computer restarts, once someone
@@ -42,7 +42,7 @@ echo.
 echo Registering the scheduled task "%TASK_NAME%" ...
 schtasks /create /tn "%TASK_NAME%" ^
     /tr "\"%~dp0scripts\run_once_task.bat\"" ^
-    /sc MINUTE /mo 15 /rl LIMITED /f
+    /sc MINUTE /mo 1 /rl LIMITED /f
 if errorlevel 1 (
     echo.
     echo [PROBLEM] Could not register the scheduled task. See the
@@ -62,7 +62,7 @@ echo  Installed!
 echo.
 echo  What was registered:
 echo    Task name : %TASK_NAME%
-echo    Runs      : every 15 minutes, as this Windows user
+echo    Runs      : every 1 minute, as this Windows user
 echo    Where     : %~dp0
 echo    Log file  : %~dp0logs\autostart.log
 echo.
@@ -70,7 +70,7 @@ echo  To CHECK it's running:
 echo    - Open the Start Menu, search for "Task Scheduler"
 echo    - Look for "%TASK_NAME%" in the Task Scheduler Library
 echo    - Or check the HEALTH Telegram group for the next
-echo      check-mark message ^(within ~15 minutes^)
+echo      check-mark message ^(within ~1 minute^)
 echo    - Or open logs\autostart.log in Notepad
 echo.
 echo  To STOP it: double-click UNINSTALL_AUTOSTART.bat

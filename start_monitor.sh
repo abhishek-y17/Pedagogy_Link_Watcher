@@ -11,7 +11,7 @@ if [ ! -x "$VENV_PY" ]; then
 fi
 
 echo "============================================================"
-echo " KEA Link Watch -- running (checks every 15 minutes)"
+echo " KEA Link Watch -- running (checks every 1 minute)"
 echo " Press Ctrl+C to stop. Status heartbeat goes to the HEALTH"
 echo " Telegram group; real alerts go to the MAIN Telegram group."
 echo "============================================================"
@@ -32,4 +32,4 @@ if [ ! -d "data/cache" ]; then
     echo
 fi
 
-exec "$VENV_PY" -m neet_pipeline.run_monitor --loop --interval 900
+exec "$VENV_PY" -m neet_pipeline.run_monitor --loop --interval 60

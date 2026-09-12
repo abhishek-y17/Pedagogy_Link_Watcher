@@ -3,7 +3,7 @@ KEA link-watch monitor (see CLAUDE.md).
 
 Usage:
     PYTHONPATH=src python -m neet_pipeline.run_monitor --once
-    PYTHONPATH=src python -m neet_pipeline.run_monitor --loop [--interval 600]
+    PYTHONPATH=src python -m neet_pipeline.run_monitor --loop [--interval 60]
     PYTHONPATH=src python -m neet_pipeline.run_monitor --baseline
 
 Watches the pages listed in config/link_watch_pages.txt for newly-added
@@ -12,7 +12,7 @@ is silently baselined on its first scan (every current link recorded,
 nothing alerted) -- only links added after that first scan trigger an alert.
 
 --once does a single scan (for cron/Task Scheduler); --loop repeats every
---interval seconds (default 600 = 10 min) until killed; --baseline records
+--interval seconds (default 60 = 1 min) until killed; --baseline records
 the current link state without alerting, for a fresh deployment or a
 deliberate reset.
 """

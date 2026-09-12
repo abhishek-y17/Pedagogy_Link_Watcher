@@ -20,7 +20,7 @@ echo  KEA Link Watch -- running
 echo ============================================================
 echo  What this window does:
 echo    - Checks the KEA pages listed in config\link_watch_pages.txt
-echo    - Every 15 minutes, automatically
+echo    - Every 1 minute, automatically
 echo    - Posts any newly-added link to your Telegram group
 echo.
 echo  Status:
@@ -71,7 +71,7 @@ if not exist "data\cache" (
     echo.
 )
 
-"%VENV_PY%" -m neet_pipeline.run_monitor --loop --interval 900
+"%VENV_PY%" -m neet_pipeline.run_monitor --loop --interval 60
 
 echo.
 echo ============================================================

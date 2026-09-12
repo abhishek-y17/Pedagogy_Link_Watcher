@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from . import watched_pages as wp
 
-DEFAULT_LOOP_INTERVAL = 600
+DEFAULT_LOOP_INTERVAL = 60
 
 
 @dataclass
