@@ -42,18 +42,20 @@ if errorlevel 1 (
 echo.
 
 rem --- First run on this computer? Seed a starting point first. -------------
-rem A fresh download (zip or git clone) has no memory of what's already been
-rem published. Without this, the very first scan would treat EVERY existing
-rem KEA/MCC result and notice as brand new and try to alert on all of it at
+rem A fresh download (zip or git clone) normally has no memory of what's
+rem already on the watched pages. Without this, the very first scan would
+rem treat EVERY existing link as brand new and try to alert on all of it at
 rem once. --baseline records what's out there right now WITHOUT sending any
-rem alerts, so only things published AFTER this point ever reach Telegram.
+rem alerts, so only links added AFTER this point ever reach Telegram.
 rem This only happens once -- after this, data\cache exists and it's skipped.
+rem (If data\cache came from `git pull`/a fresh clone of the shared repo, it
+rem already has the team's baseline and this step is skipped entirely.)
 if not exist "data\cache" (
     echo ============================================================
     echo  First run on this computer -- setting the starting point.
-    echo  This checks the websites once and remembers what's already
-    echo  published, WITHOUT sending anything to Telegram. This is
-    echo  normal and only happens this one time. Please wait...
+    echo  This checks the watched pages once and remembers what links
+    echo  are already on them, WITHOUT sending anything to Telegram.
+    echo  This is normal and only happens this one time. Please wait...
     echo ============================================================
     "%VENV_PY%" -m neet_pipeline.run_monitor --baseline
     if errorlevel 1 (
