@@ -17,7 +17,7 @@ from bs4 import BeautifulSoup
 
 from . import manifest as manifest_mod
 from .config import LinkWatchPage
-from .headless import fetch_rendered_html
+from .headless import fetch_rendered_html, RateLimitedError
 from ..state import load_json, save_json_atomic
 
 
@@ -102,6 +102,10 @@ class LinkWatchResult:
     # "known" and NOTHING is alerted on. Adding a page never floods the
     # chat; you are only alerted for links added after this scan.
     baselined: bool = False
+    # True when `error` was caused by a 429/503 response -- run_monitor.py
+    # uses this to trigger a backoff period rather than retrying next cycle
+    # like an ordinary transient failure.
+    rate_limited: bool = False
 
 
 def _safe_key(key: str) -> str:
@@ -248,6 +252,7 @@ def check_link_page(page: LinkWatchPage) -> LinkWatchResult:
             page=page,
             ok=False,
             error=f"{type(e).__name__}: {e}",
+            rate_limited=isinstance(e, RateLimitedError),
         )
 
 

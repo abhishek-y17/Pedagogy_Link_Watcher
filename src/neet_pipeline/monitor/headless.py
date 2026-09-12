@@ -20,6 +20,16 @@ class HeadlessUnavailableError(RuntimeError):
     target site blocking the headless browser (see fetch_rendered_html)."""
 
 
+class RateLimitedError(RuntimeError):
+    """The site responded 429 (Too Many Requests) or 503 (Service
+    Unavailable) -- back off for a while rather than retrying immediately,
+    since retrying at the same cadence risks a longer/harder block."""
+
+    def __init__(self, status_code: int, url: str):
+        self.status_code = status_code
+        super().__init__(f"Rate-limited fetching {url}: HTTP {status_code}")
+
+
 def fetch_rendered_html(url: str, timeout_ms: int = 30000) -> str:
     """
     Renders `url` in headless Chromium and returns the fully-loaded HTML.
@@ -50,6 +60,8 @@ def fetch_rendered_html(url: str, timeout_ms: int = 30000) -> str:
         try:
             page = browser.new_page(user_agent=_HEADLESS_UA)
             resp = page.goto(url, timeout=timeout_ms, wait_until="networkidle")
+            if resp is not None and resp.status in (429, 503):
+                raise RateLimitedError(resp.status, url)
             if resp is not None and resp.status >= 400:
                 raise RuntimeError(
                     f"Headless browser was blocked fetching {url}: HTTP {resp.status}. "

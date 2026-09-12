@@ -20,6 +20,7 @@ deliberate reset.
 from __future__ import annotations
 import argparse
 import os
+import random
 import sys
 import time
 from dataclasses import dataclass, field
@@ -35,6 +36,12 @@ from .notifier.link_alerts import post_link_alerts
 from .state import load_json, save_json_atomic
 
 STATE_PATH = os.path.join("data", "cache", "monitor_state.json")
+
+# Safer-polling protections (KEA geo-blocks non-Indian IPs, so this office
+# connection is the only way to reach it -- getting it rate-limited/blocked
+# takes the whole tool down):
+BACKOFF_SECONDS = 300   # after a 429/503, stop scanning entirely for 5 min
+JITTER_SECONDS = 30     # +/- randomness on every poll so cadence isn't exact
 
 
 def log(msg: str) -> None:
@@ -73,6 +80,27 @@ def get_last_scan_status(state_path: str = None) -> dict:
     return load_json(state_path or STATE_PATH, {
         "cycle": 0, "last_scan_at": None, "unreachable_pages": [],
     })
+
+
+def _record_backoff() -> float:
+    """Persist a backoff deadline after a 429/503. Survives process
+    restarts (Task Scheduler runs --once as a fresh process every cycle),
+    so the deadline lives in STATE_PATH rather than in memory."""
+    until = time.time() + BACKOFF_SECONDS
+    state = load_json(STATE_PATH, {"cycle": 0})
+    state["backoff_until"] = until
+    save_json_atomic(STATE_PATH, state)
+    return until
+
+
+def _active_backoff() -> float | None:
+    """Returns the backoff deadline (epoch seconds) if still in the future,
+    else None. A past/absent deadline needs no explicit clearing -- it's
+    simply ignored from here on."""
+    until = load_json(STATE_PATH, {}).get("backoff_until")
+    if isinstance(until, (int, float)) and until > time.time():
+        return until
+    return None
 
 
 def _check_link_watch_pages(cfg) -> list[LinkWatchResult]:
@@ -118,6 +146,10 @@ def run_cycle(cfg, notify: bool = True, env_path: str = tg.DEFAULT_ENV_PATH) -> 
     log(f"=== scan cycle {cycle} ===")
     link_results = _check_link_watch_pages(cfg)
     _record_scan_result([r.page.name for r in link_results if not r.ok])
+    if any(r.rate_limited for r in link_results):
+        until = _record_backoff()
+        until_ts = datetime.fromtimestamp(until).strftime("%Y-%m-%d %H:%M:%S")
+        log(f"WARNING: rate-limited (429/503) -- backing off until {until_ts}")
     link_alert_messages = _post_link_alerts_and_persist(link_results, notify, env_path)
     return MonitorRunSummary(link_results=link_results, link_alert_messages=link_alert_messages)
 
@@ -147,7 +179,24 @@ def _post_health_message(text: str, env_path: str) -> bool:
 
 
 def _execute_monitor_run(config_path: str, notify: bool = True, health_enabled: bool = True,
-                         env_path: str = tg.DEFAULT_ENV_PATH) -> int:
+                         env_path: str = tg.DEFAULT_ENV_PATH, jitter: bool = True) -> int:
+    backoff_until = _active_backoff()
+    if backoff_until is not None:
+        run_number = health_mod.next_run_number() if health_enabled else None
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        until_ts = datetime.fromtimestamp(backoff_until).strftime("%Y-%m-%d %H:%M:%S")
+        log(f"[link-watch] Backing off until {until_ts} after a 429/503 -- skipping this scan.")
+        if health_enabled:
+            _post_health_message(health_mod.format_skipped(run_number, timestamp, until_ts), env_path)
+        return 0
+
+    if jitter:
+        # A small random pre-scan delay so requests don't land at the exact
+        # top of every interval -- meaningful for --once/Task Scheduler,
+        # which owns the fixed cadence itself and has no inter-cycle sleep
+        # to jitter (that happens in main()'s --loop branch instead).
+        time.sleep(random.uniform(0, JITTER_SECONDS))
+
     run_number = health_mod.next_run_number() if health_enabled else None
     started = time.monotonic()
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -231,6 +280,8 @@ def main(argv=None) -> int:
                    help="scan and record links, skip posting to Telegram")
     p.add_argument("--no-health", action="store_true",
                    help="skip the health heartbeat post for this run")
+    p.add_argument("--no-jitter", action="store_true",
+                   help="poll at the exact interval with no random delay (mainly for tests)")
     args = p.parse_args(argv)
 
     if args.baseline:
@@ -241,6 +292,7 @@ def main(argv=None) -> int:
             args.pages,
             notify=not args.no_notify,
             health_enabled=not args.no_health,
+            jitter=not args.no_jitter,
         )
 
     while True:
@@ -248,9 +300,14 @@ def main(argv=None) -> int:
             args.pages,
             notify=not args.no_notify,
             health_enabled=not args.no_health,
+            jitter=not args.no_jitter,
         )
-        log(f"Sleeping {args.interval}s...")
-        time.sleep(args.interval)
+        if args.no_jitter:
+            sleep_for = args.interval
+        else:
+            sleep_for = max(1, args.interval + random.uniform(-JITTER_SECONDS, JITTER_SECONDS))
+        log(f"Sleeping {sleep_for:.0f}s...")
+        time.sleep(sleep_for)
 
 
 if __name__ == "__main__":

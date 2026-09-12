@@ -54,6 +54,13 @@ def format_failure(run_number: int, timestamp: str, failure: str) -> str:
     return f"❌ Run #{run_number} FAILED — {timestamp} — {failure}"
 
 
+def format_skipped(run_number: int, timestamp: str, until: str) -> str:
+    return (
+        f"⏸ Run #{run_number} SKIPPED — {timestamp} — "
+        f"backing off until {until} after a 429/503 from KEA"
+    )
+
+
 def post_health(text: str, env_path: str = tg.DEFAULT_ENV_PATH) -> dict:
     token, chat_id = tg.get_credentials(
         env_path,

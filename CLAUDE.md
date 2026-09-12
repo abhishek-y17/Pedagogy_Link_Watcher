@@ -34,6 +34,27 @@ links added *after* that first scan trigger an alert. This is what makes
 adding a new page to `link_watch_pages.txt` safe: it never floods the chat
 with everything already on the page.
 
+**Safer polling (jitter + rate-limit backoff):** at a 1-minute cadence,
+polling at an exact, fixed interval risks the office's residential IP
+getting rate-limited or blocked by KEA — with no cloud fallback (see
+convention 4 below), that would take the whole tool down.
+`run_monitor.py::JITTER_SECONDS` (±30s) adds a small random delay to every
+poll — an inter-cycle sleep offset for `--loop`, and a pre-scan delay for
+`--once`/Task Scheduler (which owns its own fixed cadence and has no
+inter-cycle sleep to jitter). `monitor/headless.py::RateLimitedError` is
+raised specifically for HTTP 429/503 (distinct from any other failure,
+e.g. the 403 seen live against mcc.nic.in's WAF); when
+`monitor/link_watch.py::LinkWatchResult.rate_limited` comes back `True`,
+`run_monitor.py::_record_backoff` persists a `backoff_until` deadline
+(`BACKOFF_SECONDS` = 5 min) into `data/cache/monitor_state.json`, and every
+`_execute_monitor_run` call checks `_active_backoff()` first and skips
+scanning entirely (no network call at all) until that deadline passes —
+this works across process restarts since Task Scheduler runs `--once` as a
+fresh process each time. A skipped run still posts a heartbeat (`⏸ ...
+SKIPPED ... backing off ...`) so the health chat is never silently quiet.
+`--no-jitter` disables the pre-scan/inter-cycle delay (used by tests and
+available for manual runs).
+
 ## Adding or removing a watched page
 
 Edit `config/link_watch_pages.txt` directly — one URL per line, `#` comments
@@ -114,7 +135,8 @@ PYTHONPATH=src python -m neet_pipeline.run_monitor --loop [--interval 60]
 `config/link_watch_pages.txt`) — mainly useful for tests.
 
 `--no-notify` scans and records links without posting to Telegram;
-`--no-health` skips the heartbeat post. Both are for dry runs / tests.
+`--no-health` skips the heartbeat post; `--no-jitter` polls at the exact
+interval with no random delay. All three are mainly for dry runs / tests.
 
 ## Telegram setup
 

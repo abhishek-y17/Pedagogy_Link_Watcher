@@ -1,6 +1,7 @@
 from neet_pipeline.monitor import link_watch as lw
 from neet_pipeline.monitor import manifest as manifest_mod
 from neet_pipeline.monitor.config import LinkWatchPage
+from neet_pipeline.monitor.headless import RateLimitedError
 
 
 def _page(**kw):
@@ -142,6 +143,32 @@ def test_present_but_empty_manifest_is_not_a_baseline(tmp_path, monkeypatch):
     result = lw.check_link_page(page)
     assert result.baselined is False
     assert [link.text for link in result.new_links] == ["New notice"]
+
+
+def test_rate_limited_response_sets_flag_distinct_from_other_failures(tmp_path, monkeypatch):
+    monkeypatch.setattr(manifest_mod, "CACHE_DIR", str(tmp_path))
+    page = _page()
+
+    def raise_429(url):
+        raise RateLimitedError(429, url)
+
+    monkeypatch.setattr(lw, "fetch_rendered_html", raise_429)
+    result = lw.check_link_page(page)
+
+    assert result.ok is False
+    assert result.rate_limited is True
+    assert "429" in result.error
+
+
+def test_ordinary_failure_does_not_set_rate_limited_flag(tmp_path, monkeypatch):
+    monkeypatch.setattr(manifest_mod, "CACHE_DIR", str(tmp_path))
+    page = _page()
+    monkeypatch.setattr(lw, "fetch_rendered_html",
+                        lambda url: (_ for _ in ()).throw(RuntimeError("blocked (403)")))
+    result = lw.check_link_page(page)
+
+    assert result.ok is False
+    assert result.rate_limited is False
 
 
 def test_link_manifest_survives_simulated_restart(tmp_path, monkeypatch):

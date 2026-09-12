@@ -1,4 +1,6 @@
 import json
+import os
+import time
 
 import pytest
 
@@ -6,6 +8,7 @@ from neet_pipeline import run_monitor as rm
 from neet_pipeline.monitor import link_watch as lw
 from neet_pipeline.monitor import manifest as manifest_mod
 from neet_pipeline.monitor.config import LinkWatchPage, MonitorConfig
+from neet_pipeline.monitor.headless import RateLimitedError
 from neet_pipeline.notifier import health as health_mod
 
 
@@ -277,6 +280,94 @@ def test_crash_run_status_goes_only_to_health_chat(tmp_path, monkeypatch):
     assert [c for c in calls if c["chat_id"] == "-100"] == []
     health = [c for c in calls if c["chat_id"] == "-200"]
     assert len(health) == 1 and "FAILED" in health[0]["text"]
+
+
+def test_rate_limit_triggers_backoff_and_next_run_is_skipped(tmp_path, monkeypatch):
+    _isolate(monkeypatch, tmp_path)
+    calls = _mock_credentials_and_messages(monkeypatch)
+    cfg = _cfg(_page())
+    monkeypatch.setattr(rm, "load_config", lambda path: cfg)
+
+    def raise_429(url):
+        raise RateLimitedError(429, url)
+
+    monkeypatch.setattr(lw, "fetch_rendered_html", raise_429)
+
+    first_code = rm._execute_monitor_run("unused.yaml", notify=False, health_enabled=True)
+    assert first_code == 1  # the triggering scan still genuinely failed to reach the page
+
+    state = json.load(open(rm.STATE_PATH, encoding="utf-8"))
+    assert state["backoff_until"] > time.time()
+
+    # A second run within the backoff window must not touch fetch_rendered_html
+    # at all -- proving the scan is truly skipped, not just failing again.
+    def _boom(url):
+        raise AssertionError("must not fetch while backing off")
+
+    monkeypatch.setattr(lw, "fetch_rendered_html", _boom)
+    second_code = rm._execute_monitor_run("unused.yaml", notify=False, health_enabled=True)
+
+    assert second_code == 0  # a skipped scan is not itself a failure
+    health_messages = [c["text"] for c in calls if c["token"] == "HEALTH_TOKEN"]
+    assert len(health_messages) == 2
+    assert "SKIPPED" in health_messages[1]
+    assert "backing off" in health_messages[1]
+
+
+def test_backoff_expires_and_scanning_resumes(tmp_path, monkeypatch):
+    _isolate(monkeypatch, tmp_path)
+    calls = _mock_credentials_and_messages(monkeypatch)
+    cfg = _cfg(_page())
+    monkeypatch.setattr(rm, "load_config", lambda path: cfg)
+    lw.write_link_manifest("kea_ugneet2026", set())  # already baselined
+
+    # simulate an already-expired backoff window (e.g. set moments ago)
+    state_path = rm.STATE_PATH
+    os.makedirs(os.path.dirname(state_path), exist_ok=True)
+    with open(state_path, "w", encoding="utf-8") as f:
+        json.dump({"cycle": 1, "backoff_until": time.time() - 5}, f)
+
+    monkeypatch.setattr(lw, "fetch_rendered_html", lambda url: '<a href="/a.pdf?id=1">A</a>')
+
+    code = rm._execute_monitor_run("unused.yaml", notify=False, health_enabled=True)
+
+    assert code == 0
+    health_messages = [c["text"] for c in calls if c["token"] == "HEALTH_TOKEN"]
+    assert "Run #1 OK" in health_messages[0]
+    assert "SKIPPED" not in health_messages[0]
+
+
+def test_jitter_sleeps_a_random_amount_within_bounds(tmp_path, monkeypatch):
+    _isolate(monkeypatch, tmp_path)
+    _mock_credentials_and_messages(monkeypatch)
+    cfg = _cfg(_page())
+    monkeypatch.setattr(rm, "load_config", lambda path: cfg)
+    lw.write_link_manifest("kea_ugneet2026", set())
+    monkeypatch.setattr(lw, "fetch_rendered_html", lambda url: "<html></html>")
+
+    sleeps = []
+    monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+
+    rm._execute_monitor_run("unused.yaml", notify=False, health_enabled=False, jitter=True)
+
+    assert len(sleeps) == 1
+    assert 0 <= sleeps[0] <= rm.JITTER_SECONDS
+
+
+def test_no_jitter_flag_skips_the_pre_scan_delay(tmp_path, monkeypatch):
+    _isolate(monkeypatch, tmp_path)
+    _mock_credentials_and_messages(monkeypatch)
+    cfg = _cfg(_page())
+    monkeypatch.setattr(rm, "load_config", lambda path: cfg)
+    lw.write_link_manifest("kea_ugneet2026", set())
+    monkeypatch.setattr(lw, "fetch_rendered_html", lambda url: "<html></html>")
+
+    sleeps = []
+    monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+
+    rm._execute_monitor_run("unused.yaml", notify=False, health_enabled=False, jitter=False)
+
+    assert sleeps == []
 
 
 def test_run_counter_increments_and_persists(tmp_path, monkeypatch):

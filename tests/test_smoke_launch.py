@@ -33,7 +33,7 @@ def test_run_monitor_once_runs_cleanly_with_empty_config(tmp_path):
 
     proc = subprocess.run(
         [sys.executable, "-m", "neet_pipeline.run_monitor",
-         "--once", "--no-notify", "--no-health", "--pages", str(pages_txt)],
+         "--once", "--no-notify", "--no-health", "--no-jitter", "--pages", str(pages_txt)],
         cwd=str(tmp_path),
         env=env,
         capture_output=True,
