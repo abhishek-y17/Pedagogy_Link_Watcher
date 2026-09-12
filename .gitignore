@@ -1,0 +1,20 @@
+# Secrets -- never commit these.
+config/.env
+.env
+
+# Python / venv artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+.pytest-tmp/
+.tmp/
+.venv/
+
+# data/cache/*.json (link-watch manifests, monitor/health state) and
+# logs/*.log are tracked ON PURPOSE: this is how the office laptop gets the
+# exact same link-watch baseline on `git pull` instead of re-baselining from
+# scratch and missing whatever was published in the gap.
+
+# Old pre-refactor scripts kept locally for reference only, if present --
+# may contain a burned token or other stale secrets. Never commit it.
+reference/

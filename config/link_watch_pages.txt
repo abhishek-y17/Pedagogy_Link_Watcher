@@ -1,0 +1,7 @@
+# KEA / counselling pages watched for NEW links. One URL per line.
+# Add or remove lines freely, then commit. Blank lines and #-comments are ignored.
+# A page's FIRST scan records the links already on it and alerts on nothing;
+# you are only alerted for links added after that.
+
+https://cetonline.karnataka.gov.in/kea/ugneet2026
+https://cetonline.karnataka.gov.in/kea/ugcet2026
