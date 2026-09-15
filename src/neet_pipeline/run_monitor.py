@@ -41,7 +41,9 @@ STATE_PATH = os.path.join("data", "cache", "monitor_state.json")
 # connection is the only way to reach it -- getting it rate-limited/blocked
 # takes the whole tool down):
 BACKOFF_SECONDS = 300   # after a 429/503, stop scanning entirely for 5 min
-JITTER_SECONDS = 30     # +/- randomness on every poll so cadence isn't exact
+JITTER_SECONDS = 30     # +/- randomness on a --once/Task Scheduler pre-scan delay
+LOOP_SLEEP_MIN = 50     # inter-cycle sleep floor for --loop (never poll faster than this)
+LOOP_SLEEP_MAX = 90     # inter-cycle sleep ceiling for --loop
 
 
 def log(msg: str) -> None:
@@ -296,16 +298,19 @@ def main(argv=None) -> int:
         )
 
     while True:
+        # No pre-scan jitter here: --loop already randomizes cadence via the
+        # inter-cycle sleep below, so the first scan (and every scan) starts
+        # immediately rather than waiting out a redundant random delay.
         _execute_monitor_run(
             args.pages,
             notify=not args.no_notify,
             health_enabled=not args.no_health,
-            jitter=not args.no_jitter,
+            jitter=False,
         )
         if args.no_jitter:
             sleep_for = args.interval
         else:
-            sleep_for = max(1, args.interval + random.uniform(-JITTER_SECONDS, JITTER_SECONDS))
+            sleep_for = random.uniform(LOOP_SLEEP_MIN, LOOP_SLEEP_MAX)
         log(f"Sleeping {sleep_for:.0f}s...")
         time.sleep(sleep_for)
 

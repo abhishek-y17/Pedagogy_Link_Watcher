@@ -38,10 +38,14 @@ with everything already on the page.
 polling at an exact, fixed interval risks the office's residential IP
 getting rate-limited or blocked by KEA — with no cloud fallback (see
 convention 4 below), that would take the whole tool down.
-`run_monitor.py::JITTER_SECONDS` (±30s) adds a small random delay to every
-poll — an inter-cycle sleep offset for `--loop`, and a pre-scan delay for
-`--once`/Task Scheduler (which owns its own fixed cadence and has no
-inter-cycle sleep to jitter). `monitor/headless.py::RateLimitedError` is
+`--loop` randomizes its inter-cycle sleep between
+`run_monitor.py::LOOP_SLEEP_MIN`/`LOOP_SLEEP_MAX` (50-90s, so cadence is
+never faster than 50s) instead of sleeping a fixed `--interval`; the first
+scan after start still runs immediately (no pre-scan delay), since the
+inter-cycle sleep already provides the randomness. `--once`/Task Scheduler
+(which owns its own fixed external cadence and has no inter-cycle sleep to
+jitter) instead gets a `run_monitor.py::JITTER_SECONDS` (±30s) pre-scan
+delay. `monitor/headless.py::RateLimitedError` is
 raised specifically for HTTP 429/503 (distinct from any other failure,
 e.g. the 403 seen live against mcc.nic.in's WAF); when
 `monitor/link_watch.py::LinkWatchResult.rate_limited` comes back `True`,
