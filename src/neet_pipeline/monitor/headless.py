@@ -14,6 +14,19 @@ from __future__ import annotations
 _HEADLESS_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 
+# Playwright doesn't send Chromium's Sec-Ch-Ua client-hint headers by
+# default. Their absence -- while the UA string claims a real Chrome build --
+# was enough on its own for mcc.nic.in's Akamai Bot Manager to flag the
+# request and return HTTP 403, confirmed live; adding these (matching the
+# UA's Chrome version) alongside the UA is sufficient, no automation-flag
+# tricks or navigator.webdriver patching required.
+_HEADLESS_EXTRA_HEADERS = {
+    "Accept-Language": "en-IN,en;q=0.9",
+    "Sec-Ch-Ua": '"Chromium";v="122", "Google Chrome";v="122", "Not?A_Brand";v="99"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+}
+
 
 class HeadlessUnavailableError(RuntimeError):
     """playwright itself isn't installed/usable -- distinct from the
@@ -36,9 +49,9 @@ def fetch_rendered_html(url: str, timeout_ms: int = 30000) -> str:
 
     Raises HeadlessUnavailableError if playwright/Chromium isn't installed.
     Raises RuntimeError if the site's own defenses block the headless
-    browser -- confirmed live against mcc.nic.in, whose WAF (Akamai Bot
-    Manager) returns HTTP 403 to headless Chromium even with basic
-    UA-spoofing and navigator.webdriver patched out. That is a materially
+    browser despite `_HEADLESS_EXTRA_HEADERS` -- mcc.nic.in's WAF (Akamai
+    Bot Manager) is known to 403 headless Chromium missing those headers
+    (see `_HEADLESS_EXTRA_HEADERS`'s comment). That is a materially
     different failure than "playwright missing" and is reported as such.
     """
     try:
@@ -58,7 +71,10 @@ def fetch_rendered_html(url: str, timeout_ms: int = 30000) -> str:
                 "Install with: pip install playwright && playwright install chromium"
             ) from e
         try:
-            page = browser.new_page(user_agent=_HEADLESS_UA)
+            page = browser.new_page(
+                user_agent=_HEADLESS_UA,
+                extra_http_headers=_HEADLESS_EXTRA_HEADERS,
+            )
             resp = page.goto(url, timeout=timeout_ms, wait_until="networkidle")
             if resp is not None and resp.status in (429, 503):
                 raise RateLimitedError(resp.status, url)

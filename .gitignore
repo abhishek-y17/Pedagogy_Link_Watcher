@@ -18,3 +18,7 @@ __pycache__/
 # Old pre-refactor scripts kept locally for reference only, if present --
 # may contain a burned token or other stale secrets. Never commit it.
 reference/
+
+# One-off research artifact from investigating mcc.nic.in's link structure --
+# not part of the monitor's tracked data.
+data/mcc-investigation.html

@@ -57,7 +57,7 @@ def format_failure(run_number: int, timestamp: str, failure: str) -> str:
 def format_skipped(run_number: int, timestamp: str, until: str) -> str:
     return (
         f"⏸ Run #{run_number} SKIPPED — {timestamp} — "
-        f"backing off until {until} after a 429/503 from KEA"
+        f"backing off until {until} after a 429/503 from a watched page"
     )
 
 

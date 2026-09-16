@@ -5,8 +5,10 @@ Context and working agreement for Claude Code. Read this fully before editing.
 ## What this project is
 
 A small always-on monitor for an education consultancy. It watches a
-hand-edited list of KEA counselling pages for **newly-added links** and posts
-them to a Telegram group. That's the entire scope — there is no PDF scraping,
+hand-edited list of KEA (Karnataka) and MCC (national) counselling pages for
+**newly-added links** and posts them to a Telegram group. See **LINK.md**
+for what's watched and why those specific URLs were chosen over the
+alternatives. That's the entire scope — there is no PDF scraping,
 no student roster, no rank matching, and no parent notification here anymore
 (an earlier, much larger version of this repo did all of that; it was
 deliberately stripped down to just this).
@@ -66,6 +68,12 @@ and blank lines ignored. No code change needed. A newly-added page baselines
 itself on the next scan (see above); a removed line just stops being checked
 (its old manifest file under `data/cache/` is harmless and can be deleted).
 
+See **LINK.md** for the reasoning behind the current URL list -- e.g. why
+MCC is watched via its full-list pages (`current-events-*`,
+`eservices-schedule-*`) rather than the landing pages, and why only those
+two sections and not all of MCC's "View More" targets. Update LINK.md
+alongside the `.txt` file when the reasoning changes, not just the URLs.
+
 There is no separate yaml config — `config/link_watch_pages.txt` is the only
 config file this tool reads. Link *identity* (used to detect "is this link
 new") is normalized URL + link text; see `monitor/link_watch.py`'s module
@@ -90,12 +98,20 @@ that only if a real page actually needs it.
    runs on an office PC (residential Indian connection, stays on 24/7) via
    `START_MONITOR.bat` / Task Scheduler, not GitHub Actions or any other
    cloud host.
+5. **mcc.nic.in needs specific headers, not just an Indian IP.** Its Akamai
+   WAF returns HTTP 403 to headless Chromium whenever the request is
+   missing Chromium's `Sec-Ch-Ua` client-hint headers, regardless of IP
+   location (confirmed live from an Indian IP too -- this is bot detection,
+   not geo-blocking). `monitor/headless.py::_HEADLESS_EXTRA_HEADERS` sends
+   those headers alongside the UA string; don't drop them when touching
+   that function.
 
 ## Repo layout
 
 ```
 kea-link-watch/
 ├── CLAUDE.md
+├── LINK.md                # why these specific pages/URLs are watched
 ├── README.md
 ├── README_OFFICE.txt      # plain-English operator guide (office PC)
 ├── SETUP.bat              # run once: venv, deps, playwright, config/.env

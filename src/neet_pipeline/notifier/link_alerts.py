@@ -27,10 +27,10 @@ def format_link_alert_message(results: list[LinkWatchResult], timestamp: str | N
     new_results = [result for result in results if result.ok and result.new_links]
     total_new = sum(len(result.new_links) for result in new_results)
 
-    lines = [f"New KEA page link(s) detected — {timestamp}", f"Total new links: {total_new}"]
+    lines = [f"New link(s) detected — {timestamp}", f"Total new links: {total_new}"]
     for result in new_results:
         lines.append("")
-        lines.append(f"Page: {result.page.name}")
+        lines.append(f"Page: {result.page.key}")
         lines.append(f"Source page: {result.page.url}")
         for link in result.new_links:
             label = link.text or "(no link text)"

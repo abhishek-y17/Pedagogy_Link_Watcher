@@ -5,3 +5,10 @@
 
 https://cetonline.karnataka.gov.in/kea/ugneet2026
 https://cetonline.karnataka.gov.in/kea/ugcet2026
+
+# MCC (national) PG/UG counselling pages -- the full-list pages, not the
+# landing pages, on purpose. See LINK.md for why.
+https://mcc.nic.in/current-events-pg/
+https://mcc.nic.in/eservices-schedule-pg/
+https://mcc.nic.in/current-events-ug/
+https://mcc.nic.in/eservices-schedule-ug/

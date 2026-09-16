@@ -1,11 +1,12 @@
 # KEA Link Watch
 
-Watches KEA counselling pages for newly-added links and posts them to a
-Telegram group. Replaces manually refreshing the page to check for a new
-notice or result.
+Watches KEA (Karnataka) and MCC (national) counselling pages for
+newly-added links and posts them to a Telegram group. Replaces manually
+refreshing the page to check for a new notice or result.
 
-See **CLAUDE.md** for the detailed working agreement, and `README_OFFICE.txt`
-for the non-technical operator walkthrough.
+See **CLAUDE.md** for the detailed working agreement, **LINK.md** for what's
+watched and why those specific URLs (not others) were chosen, and
+`README_OFFICE.txt` for the non-technical operator walkthrough.
 
 ## Quick start
 
