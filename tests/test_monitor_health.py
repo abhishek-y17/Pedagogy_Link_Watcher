@@ -24,6 +24,11 @@ def _isolate(monkeypatch, tmp_path):
     monkeypatch.setattr(manifest_mod, "CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setattr(rm, "STATE_PATH", str(tmp_path / "cache" / "monitor_state.json"))
     monkeypatch.setattr(health_mod, "HEALTH_STATE_PATH", str(tmp_path / "cache" / "health_state.json"))
+    # Heartbeats are batched (health.py::BATCH_SIZE runs per Telegram post).
+    # Most tests below care about a single run's classification (ok/failed/
+    # skipped), not the batching itself, so default to posting every run
+    # here; test_health_batches_* below restores the real batch size.
+    monkeypatch.setattr(health_mod, "BATCH_SIZE", 1)
 
 
 def _mock_credentials_and_messages(monkeypatch):
@@ -91,8 +96,8 @@ def test_health_success_posts_counts(tmp_path, monkeypatch):
     assert code == 0
     health_messages = [call["text"] for call in calls if call["token"] == "HEALTH_TOKEN"]
     assert len(health_messages) == 1
-    assert "Run #1 OK" in health_messages[0]
-    assert "pages checked: 1" in health_messages[0]
+    assert "Run #1" in health_messages[0]
+    assert "OK: 1/1" in health_messages[0]
     assert "new links: 2" in health_messages[0]
 
 
@@ -165,7 +170,8 @@ def test_one_of_two_link_pages_down_is_success_with_warning(tmp_path, monkeypatc
     assert code == 0
     health_messages = [call["text"] for call in calls if call["token"] == "HEALTH_TOKEN"]
     assert len(health_messages) == 1
-    assert "Run #1 OK" in health_messages[0]
+    assert "Run #1" in health_messages[0]
+    assert "OK: 1/1" in health_messages[0]
     assert "WARNING: link-watch page failed: KEA Down: RuntimeError: blocked" in health_messages[0]
 
 
@@ -266,7 +272,7 @@ def test_run_status_goes_only_to_health_chat_never_to_alerts_chat(tmp_path, monk
 
     assert [c for c in calls if c["chat_id"] == "-100"] == []  # alerts chat: silent
     health = [c for c in calls if c["chat_id"] == "-200"]
-    assert len(health) == 1 and "Run #1 OK" in health[0]["text"]
+    assert len(health) == 1 and "Run #1" in health[0]["text"] and "OK: 1/1" in health[0]["text"]
 
 
 def test_crash_run_status_goes_only_to_health_chat(tmp_path, monkeypatch):
@@ -333,8 +339,9 @@ def test_backoff_expires_and_scanning_resumes(tmp_path, monkeypatch):
 
     assert code == 0
     health_messages = [c["text"] for c in calls if c["token"] == "HEALTH_TOKEN"]
-    assert "Run #1 OK" in health_messages[0]
-    assert "SKIPPED" not in health_messages[0]
+    assert "Run #1" in health_messages[0]
+    assert "OK: 1/1" in health_messages[0]
+    assert "backing off" not in health_messages[0]
 
 
 def test_jitter_sleeps_a_random_amount_within_bounds(tmp_path, monkeypatch):
@@ -370,6 +377,85 @@ def test_no_jitter_flag_skips_the_pre_scan_delay(tmp_path, monkeypatch):
     assert sleeps == []
 
 
+def test_health_batches_and_defers_posting_until_batch_size(tmp_path, monkeypatch):
+    _isolate(monkeypatch, tmp_path)
+    monkeypatch.setattr(health_mod, "BATCH_SIZE", 3)  # override the _isolate default of 1
+    calls = _mock_credentials_and_messages(monkeypatch)
+    cfg = _cfg(_page())
+    monkeypatch.setattr(rm, "load_config", lambda path: cfg)
+    lw.write_link_manifest("kea_ugneet2026", set())  # already baselined
+    monkeypatch.setattr(lw, "fetch_rendered_html", lambda url: '<a href="/one.pdf?id=1">One</a>')
+
+    for _ in range(health_mod.BATCH_SIZE - 1):
+        assert rm._execute_monitor_run("unused.yaml", notify=False, health_enabled=True) == 0
+    assert [c for c in calls if c["token"] == "HEALTH_TOKEN"] == []  # nothing posted yet
+
+    assert rm._execute_monitor_run("unused.yaml", notify=False, health_enabled=True) == 0
+
+    health_messages = [c["text"] for c in calls if c["token"] == "HEALTH_TOKEN"]
+    assert len(health_messages) == 1  # exactly one message for the whole batch
+    text = health_messages[0]
+    assert "Runs #1-#3" in text
+    assert "OK: 3/3  FAILED: 0  SKIPPED: 0" in text
+    # only the first of the 3 runs finds the (already-baselined) link as new
+    assert "new links: 1" in text
+
+
+def test_health_batch_dedupes_repeated_warnings(tmp_path, monkeypatch):
+    """A page that's down for a whole batch of otherwise-OK runs (one of
+    two pages still works, so status stays "ok" with a warning, not
+    "failed") should collapse to one warning line with a count, not one
+    near-identical line per run."""
+    _isolate(monkeypatch, tmp_path)
+    monkeypatch.setattr(health_mod, "BATCH_SIZE", 3)
+    calls = _mock_credentials_and_messages(monkeypatch)
+    ok_page = _page(key="ok", name="KEA OK", url="https://kea.example/ok")
+    down_page = _page(key="down", name="KEA Down", url="https://kea.example/down")
+    cfg = _cfg(ok_page, down_page)
+    monkeypatch.setattr(rm, "load_config", lambda path: cfg)
+
+    def fake_fetch(url):
+        if url.endswith("/down"):
+            raise RuntimeError("blocked")
+        return '<a href="/ok.pdf">OK</a>'
+
+    monkeypatch.setattr(lw, "fetch_rendered_html", fake_fetch)
+
+    for _ in range(health_mod.BATCH_SIZE):
+        rm._execute_monitor_run("unused.yaml", notify=False, health_enabled=True)
+
+    health_messages = [c["text"] for c in calls if c["token"] == "HEALTH_TOKEN"]
+    assert len(health_messages) == 1
+    text = health_messages[0]
+    assert "OK: 3/3  FAILED: 0  SKIPPED: 0" in text
+    assert text.count("link-watch page failed: KEA Down") == 1
+    assert "(x3)" in text
+
+
+def test_health_failure_bypasses_batching_and_posts_immediately(tmp_path, monkeypatch):
+    """Unlike ok/skipped runs, a failed run must not wait for the batch to
+    fill -- it's reported the moment it happens."""
+    _isolate(monkeypatch, tmp_path)
+    monkeypatch.setattr(health_mod, "BATCH_SIZE", 10)  # would never fill in this test
+    calls = _mock_credentials_and_messages(monkeypatch)
+    monkeypatch.setattr(rm, "load_config", lambda path: _cfg())
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated crash")
+
+    monkeypatch.setattr(rm, "run_cycle", boom)
+
+    code = rm._execute_monitor_run("unused.yaml", notify=False, health_enabled=True)
+
+    assert code == 1
+    health_messages = [c["text"] for c in calls if c["token"] == "HEALTH_TOKEN"]
+    assert len(health_messages) == 1  # posted despite the batch being nowhere near full
+    assert "Run #1 FAILED" in health_messages[0]
+    # the failure isn't left sitting in the buffer either
+    with open(health_mod.HEALTH_STATE_PATH, "r", encoding="utf-8") as f:
+        assert json.load(f).get("pending", []) == []
+
+
 def test_run_counter_increments_and_persists(tmp_path, monkeypatch):
     _isolate(monkeypatch, tmp_path)
     calls = _mock_credentials_and_messages(monkeypatch)
@@ -379,7 +465,7 @@ def test_run_counter_increments_and_persists(tmp_path, monkeypatch):
     assert rm._execute_monitor_run("unused.yaml", notify=False, health_enabled=True) == 0
 
     health_messages = [call["text"] for call in calls if call["token"] == "HEALTH_TOKEN"]
-    assert "Run #1 OK" in health_messages[0]
-    assert "Run #2 OK" in health_messages[1]
+    assert "Run #1" in health_messages[0]
+    assert "Run #2" in health_messages[1]
     with open(health_mod.HEALTH_STATE_PATH, "r", encoding="utf-8") as f:
         assert json.load(f)["run"] == 2

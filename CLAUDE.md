@@ -28,13 +28,30 @@ Every ~1 minute (configurable), for each page in `config/link_watch_pages.txt`:
    (`data/cache/links_<page_key>.json`).
 4. Post any newly-added links to the Telegram alerts chat; append them to
    `data/cache/recent_links_<page_key>.log` for a human-skimmable feed.
-5. Post a ✅/❌ heartbeat line to a separate Telegram health chat.
+5. Record this run's outcome for the health chat -- see "Batched health
+   heartbeat" below; a failed run posts immediately, a healthy/skipped one
+   is buffered into the next batch summary.
 
 **Auto-baseline:** a page with no existing manifest is silently baselined on
 its first scan — every current link is recorded, nothing is alerted. Only
 links added *after* that first scan trigger an alert. This is what makes
 adding a new page to `link_watch_pages.txt` safe: it never floods the chat
 with everything already on the page.
+
+**Batched health heartbeat:** `notifier/health.py::record_run` buffers each
+run's outcome (ok/failed/skipped) instead of posting a heartbeat every ~1
+minute -- that was too noisy at this cadence. Once
+`health.py::BATCH_SIZE` (10) runs have piled up, `pop_batch` hands them
+back for `format_batch_summary` to render as one Telegram message (OK/
+FAILED/SKIPPED counts, total new links, and any failure/skip/warning text
+deduplicated with an "(xN)" count rather than repeated per run) -- roughly
+one heartbeat every 10 minutes at the normal cadence. A **failed** run is
+the exception: `run_monitor.py::_record_health_outcome` posts it
+immediately via `health.py::format_failure` rather than buffering it, so
+a real problem is never sitting unreported for up to 10 cycles. Tests
+shrink `BATCH_SIZE` via `monkeypatch.setattr(health_mod, "BATCH_SIZE",
+...)` (read from module globals at call time, not bound as a default arg,
+so this works) instead of running 10 real cycles per test.
 
 **Safer polling (jitter + rate-limit backoff):** at a 1-minute cadence,
 polling at an exact, fixed interval risks the office's residential IP

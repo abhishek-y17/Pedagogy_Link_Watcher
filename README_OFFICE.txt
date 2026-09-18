@@ -118,23 +118,31 @@ use Option B (INSTALL_AUTOSTART.bat) and forget about it.
 
 WHAT "THE GREEN CHECK IN TELEGRAM" MEANS
 ------------------------------------------------------------------------
-Every 1 minute, the monitor posts a short status line to the
-HEALTH Telegram group:
+The monitor still checks the pages every ~1 minute, but it no longer
+posts a HEALTH message after every single check -- that was too many
+messages. Instead, it bundles the last 10 checks into ONE summary
+message to the HEALTH Telegram group, roughly every 10 minutes:
 
-   [Green check] Run #12 OK -- everything checked fine this time.
+   [Green check] Runs #3-#12 (12:30:00 -> 12:39:47)
+   OK: 10/10  FAILED: 0  SKIPPED: 0  new links: 2
+
+If something actually goes wrong, you do NOT have to wait for that
+10-minute summary -- a real failure is posted to HEALTH the moment it
+happens, on its own:
+
    [Red cross]   Run #12 FAILED -- something went wrong this time.
 
 This HEALTH group is just a heartbeat -- it does not mean anything
 new was found. The MAIN Telegram group is where real alerts appear
 (a newly-added link on one of the watched pages).
 
-If you stop seeing the green check messages for more than about
-5 minutes, something has stopped -- see below.
+If you stop seeing HEALTH messages of either kind for more than about
+15 minutes, something has stopped -- see below.
 
 
 IF SOMETHING GOES WRONG
 ------------------------------------------------------------------------
-- No green checks for 5+ minutes:
+- No HEALTH messages of either kind for 15+ minutes:
     The computer may have gone to sleep, lost internet, or the
     window (if using Option A) got closed. Check the computer is
     on, connected to the internet, and re-run START_MONITOR.bat

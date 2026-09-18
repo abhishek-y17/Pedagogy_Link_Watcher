@@ -180,6 +180,27 @@ def _post_health_message(text: str, env_path: str) -> bool:
         return False
 
 
+def _record_health_outcome(run_number: int, timestamp: str, status: str,
+                           env_path: str, **fields) -> bool:
+    """
+    A "failed" run bypasses batching and posts immediately (a real problem
+    shouldn't sit unreported for up to health.py::BATCH_SIZE runs). "ok"
+    and "skipped" runs are buffered (health.py::record_run) and only
+    actually posted once BATCH_SIZE runs have piled up, as one summary
+    message -- see health.py's module docstring for why.
+    """
+    if status == "failed":
+        text = health_mod.format_failure(run_number, timestamp, fields.get("failure", "?"))
+        return _post_health_message(text, env_path)
+
+    health_mod.record_run({"run_number": run_number, "timestamp": timestamp,
+                           "status": status, **fields})
+    batch = health_mod.pop_batch()
+    if batch is None:
+        return True
+    return _post_health_message(health_mod.format_batch_summary(batch), env_path)
+
+
 def _execute_monitor_run(config_path: str, notify: bool = True, health_enabled: bool = True,
                          env_path: str = tg.DEFAULT_ENV_PATH, jitter: bool = True) -> int:
     backoff_until = _active_backoff()
@@ -189,7 +210,7 @@ def _execute_monitor_run(config_path: str, notify: bool = True, health_enabled: 
         until_ts = datetime.fromtimestamp(backoff_until).strftime("%Y-%m-%d %H:%M:%S")
         log(f"[link-watch] Backing off until {until_ts} after a 429/503 -- skipping this scan.")
         if health_enabled:
-            _post_health_message(health_mod.format_skipped(run_number, timestamp, until_ts), env_path)
+            _record_health_outcome(run_number, timestamp, "skipped", env_path, until=until_ts)
         return 0
 
     if jitter:
@@ -200,22 +221,20 @@ def _execute_monitor_run(config_path: str, notify: bool = True, health_enabled: 
         time.sleep(random.uniform(0, JITTER_SECONDS))
 
     run_number = health_mod.next_run_number() if health_enabled else None
-    started = time.monotonic()
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     try:
         cfg = load_config(config_path)
         log(f"Loaded {len(cfg.link_watch)} link-watch page(s)")
         summary = run_cycle(cfg, notify=notify, env_path=env_path)
-        duration = time.monotonic() - started
         failure = _summary_failure(summary)
         warnings = _summary_warnings(summary)
 
         if failure:
             log(f"ERROR: {failure}")
             if health_enabled:
-                text = health_mod.format_failure(run_number, timestamp, failure)
-                if not _post_health_message(text, env_path):
+                if not _record_health_outcome(run_number, timestamp, "failed", env_path,
+                                              failure=failure):
                     return 1
             return 1
 
@@ -224,23 +243,18 @@ def _execute_monitor_run(config_path: str, notify: bool = True, health_enabled: 
                 log(f"WARNING: {warning}")
 
         if health_enabled:
-            text = health_mod.format_success(
-                run_number,
-                timestamp,
-                pages_checked=summary.pages_checked,
+            if not _record_health_outcome(
+                run_number, timestamp, "ok", env_path,
                 new_links=summary.new_links_count,
-                duration_seconds=duration,
                 warnings=warnings,
-            )
-            if not _post_health_message(text, env_path):
+            ):
                 return 1
         return 0
     except Exception as e:
         failure = f"{type(e).__name__}: {e}"
         log(f"FATAL: scan cycle raised an unhandled exception: {failure}")
         if health_enabled:
-            text = health_mod.format_failure(run_number, timestamp, failure)
-            _post_health_message(text, env_path)
+            _record_health_outcome(run_number, timestamp, "failed", env_path, failure=failure)
         return 1
 
 
