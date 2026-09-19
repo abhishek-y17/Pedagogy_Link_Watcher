@@ -171,6 +171,50 @@ def test_ordinary_failure_does_not_set_rate_limited_flag(tmp_path, monkeypatch):
     assert result.rate_limited is False
 
 
+def test_content_selector_drops_shared_nav_and_footer_links():
+    html = (
+        '<header><a href="/pgcet2026.aspx">PGCET</a></header>'
+        '<main><a href="/kea/doc.pdf?id=1">Round 1 Result</a></main>'
+        '<footer><a href="https://nic.in/">NIC</a></footer>'
+    )
+    links = lw.extract_all_links(html, "https://cetonline.karnataka.gov.in/kea/ugcet2026",
+                                 content_selector="main")
+    assert [link.text for link in links] == ["Round 1 Result"]
+
+
+def test_content_selector_falls_back_to_whole_page_when_selector_matches_nothing():
+    html = '<div class="page"><a href="/kea/doc.pdf?id=1">Round 1 Result</a></div>'
+    links = lw.extract_all_links(html, "https://cetonline.karnataka.gov.in/kea/ugcet2026",
+                                 content_selector="main")
+    assert [link.text for link in links] == ["Round 1 Result"]
+
+
+def test_check_link_page_uses_page_content_selector_to_avoid_cross_page_nav_leak(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(manifest_mod, "CACHE_DIR", str(tmp_path))
+    page = _page(content_selector="main")
+    html = (
+        '<header><a href="/pgcet2026.aspx">PGCET</a></header>'
+        '<main><a href="/kea/doc.pdf?id=1">Round 1 Result</a></main>'
+    )
+    monkeypatch.setattr(lw, "fetch_rendered_html", lambda url: html)
+
+    first = lw.check_link_page(page)
+    assert first.baselined is True
+    assert [link.text for link in first.links] == ["Round 1 Result"]
+    lw.persist_link_result(first)
+
+    # a change to the shared nav (outside <main>) must not surface as a
+    # "new link" on this page -- that's the whole point of scoping.
+    monkeypatch.setattr(
+        lw, "fetch_rendered_html",
+        lambda url: html.replace("PGCET", "PGCET and PG-Dental"),
+    )
+    second = lw.check_link_page(page)
+    assert second.new_links == []
+
+
 def test_link_manifest_survives_simulated_restart(tmp_path, monkeypatch):
     monkeypatch.setattr(manifest_mod, "CACHE_DIR", str(tmp_path))
     page = _page()

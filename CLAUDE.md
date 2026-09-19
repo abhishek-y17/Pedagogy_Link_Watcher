@@ -101,6 +101,26 @@ optional `volatile_params`/`keep_params` overrides in code for a page whose
 query params misbehave, but nothing wires those up from config today — add
 that only if a real page actually needs it.
 
+`extract_all_links` also accepts a `content_selector` (a CSS selector, e.g.
+`"main"`) that scopes extraction to that element instead of the whole
+document. This exists because a site's nav/header/footer chrome is
+byte-identical across every page it hosts; without scoping, two watched
+pages on the same site pick up each other's shared chrome links, and any
+edit to that chrome fires a duplicate, unrelated alert on every page on
+that site at once. `monitor/config.py::_CONTENT_SELECTOR_BY_HOST` wires
+this in per-hostname (not exposed in `link_watch_pages.txt` — same
+code-level-override pattern as `volatile_params`/`keep_params` above);
+falls back to the whole document if the selector matches nothing, so a
+site redesign degrades to noisier extraction rather than silently
+returning zero links. Both watched hosts are confirmed and wired against
+their live DOM (2026-09-19): `mcc.nic.in` -> `"main"`, and
+`cetonline.karnataka.gov.in` (KEA) -> `".card-deck"` (every KEA page shares
+an identical template — a 235-link sidebar `<nav>`, a 4-link banner, and a
+15-link `<footer>` around one page-specific `div.card-deck`; the sidebar
+is exactly where PGCET/PG-Dental/PBBSc/BPT/AHS-lateral links were leaking
+into UGCET/UGNEET's manifests — see LINK.md's "Why only these 4 KEA pages"
+section for the live incident that surfaced this).
+
 ## Non-negotiable conventions
 
 1. **`config/link_watch_pages.txt` is the source of truth for what's

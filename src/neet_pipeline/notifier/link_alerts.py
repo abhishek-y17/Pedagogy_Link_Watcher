@@ -30,7 +30,6 @@ def format_link_alert_message(results: list[LinkWatchResult], timestamp: str | N
     lines = [f"New link(s) detected — {timestamp}", f"Total new links: {total_new}"]
     for result in new_results:
         lines.append("")
-        lines.append(f"Page: {result.page.key}")
         lines.append(f"Source page: {result.page.url}")
         for link in result.new_links:
             label = link.text or "(no link text)"

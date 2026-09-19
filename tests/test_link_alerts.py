@@ -3,7 +3,9 @@ import pytest
 from neet_pipeline.monitor.config import LinkWatchPage
 from neet_pipeline.monitor.link_watch import LinkWatchResult, PageLink
 from neet_pipeline.notifier import link_alerts
-from neet_pipeline.notifier.link_alerts import MAX_ALERT_CHARS, _split_for_telegram, post_link_alerts
+from neet_pipeline.notifier.link_alerts import (
+    MAX_ALERT_CHARS, _split_for_telegram, format_link_alert_message, post_link_alerts,
+)
 
 
 def _result(page_key="kea", n_new=1):
@@ -17,6 +19,17 @@ def _result(page_key="kea", n_new=1):
         for i in range(n_new)
     ]
     return LinkWatchResult(page=page, ok=True, links=list(new_links), new_links=new_links)
+
+
+def test_message_shows_source_page_once_not_a_duplicate_page_line():
+    # page.name is the raw URL (see watched_pages.py::derive_name), so a
+    # separate "Page:" line duplicated "Source page:" verbatim -- confirmed
+    # live 2026-09-18, e.g. both read
+    # "https://cetonline.karnataka.gov.in/kea/ugneet2026". Keep just one line.
+    text = format_link_alert_message([_result(page_key="kea_ugneet2026")])
+    assert text.count("Source page:") == 1
+    assert "Page:" not in text
+    assert "https://kea.example/kea_ugneet2026" in text
 
 
 def test_split_short_text_is_one_chunk():

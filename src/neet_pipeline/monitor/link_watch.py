@@ -206,29 +206,45 @@ def normalize_link_text(text: str) -> str:
 
 
 def extract_all_links(html: str, base_url: str, volatile_params: frozenset = frozenset(),
-                      keep_params: frozenset = frozenset()) -> list[PageLink]:
-    """Extract every HTTP(S) <a href> link, not just PDFs."""
+                      keep_params: frozenset = frozenset(),
+                      content_selector: str | None = None) -> list[PageLink]:
+    """Extract every HTTP(S) <a href> link, not just PDFs.
+
+    `content_selector`, when given, scopes extraction to the elements matched
+    by that CSS selector (e.g. "main") instead of the whole document -- use
+    it to drop site-wide nav/header/footer chrome that's byte-identical
+    across every page on a site. Without this, two watched pages on the same
+    site pick up the same nav/footer links, and any edit to that shared
+    chrome fires a duplicate, unrelated alert on every page on that site at
+    once (e.g. KEA's PGCET sidebar menu leaking into the UGCET/UGNEET
+    manifests). Falls back to the whole document if the selector matches
+    nothing, so a site redesign that breaks the selector degrades to the
+    old (noisier) behavior instead of silently extracting zero links.
+    """
     soup = BeautifulSoup(html or "", "html.parser")
+    roots = soup.select(content_selector) if content_selector else []
+    search_roots = roots if roots else [soup]
     seen: dict[LinkIdentity, PageLink] = {}
-    for a in soup.find_all("a", href=True):
-        href = (a.get("href") or "").strip()
-        if not href:
-            continue
-        url = urljoin(base_url, href)
-        scheme = urlsplit(url).scheme.lower()
-        if scheme not in ("http", "https"):
-            continue
-        text = normalize_link_text(a.get_text(separator=" ", strip=True))
-        normalized_url = normalize_url_for_identity(url, volatile_params, keep_params)
-        link = PageLink(url=url, normalized_url=normalized_url, text=text)
-        seen.setdefault(link.identity, link)
+    for root in search_roots:
+        for a in root.find_all("a", href=True):
+            href = (a.get("href") or "").strip()
+            if not href:
+                continue
+            url = urljoin(base_url, href)
+            scheme = urlsplit(url).scheme.lower()
+            if scheme not in ("http", "https"):
+                continue
+            text = normalize_link_text(a.get_text(separator=" ", strip=True))
+            normalized_url = normalize_url_for_identity(url, volatile_params, keep_params)
+            link = PageLink(url=url, normalized_url=normalized_url, text=text)
+            seen.setdefault(link.identity, link)
     return sorted(seen.values(), key=lambda link: (link.normalized_url, link.text, link.url))
 
 
 def check_link_page(page: LinkWatchPage) -> LinkWatchResult:
     try:
         html = fetch_rendered_html(page.url)
-        links = extract_all_links(html, page.url)
+        links = extract_all_links(html, page.url, content_selector=page.content_selector)
         manifest_present = link_manifest_exists(page.key)
         known = read_link_manifest(page.key)
         current = {link.identity for link in links}
