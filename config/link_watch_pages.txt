@@ -4,8 +4,7 @@
 # you are only alerted for links added after that.
 
 https://cetonline.karnataka.gov.in/kea/ugneet2026
-https://cetonline.karnataka.gov.in/kea/ugcet2026
-https://cetonline.karnataka.gov.in/kea/pgcet2026
+https://cetonline.karnataka.gov.in/kea/pgneet2026
 https://cetonline.karnataka.gov.in/kea/pgden2026
 
 # MCC (national) PG/UG counselling pages -- the full-list pages, not the
