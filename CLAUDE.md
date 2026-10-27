@@ -109,17 +109,36 @@ pages on the same site pick up each other's shared chrome links, and any
 edit to that chrome fires a duplicate, unrelated alert on every page on
 that site at once. `monitor/config.py::_CONTENT_SELECTOR_BY_HOST` wires
 this in per-hostname (not exposed in `link_watch_pages.txt` — same
-code-level-override pattern as `volatile_params`/`keep_params` above);
-falls back to the whole document if the selector matches nothing, so a
-site redesign degrades to noisier extraction rather than silently
-returning zero links. Both watched hosts are confirmed and wired against
-their live DOM (2026-09-19): `mcc.nic.in` -> `"main"`, and
+code-level-override pattern as `volatile_params`/`keep_params` above).
+Both watched hosts are confirmed and wired against their live DOM
+(2026-09-19, re-confirmed 2026-10-27): `mcc.nic.in` -> `"main"`, and
 `cetonline.karnataka.gov.in` (KEA) -> `".card-deck"` (every KEA page shares
 an identical template — a 235-link sidebar `<nav>`, a 4-link banner, and a
 15-link `<footer>` around one page-specific `div.card-deck`; the sidebar
 is exactly where PGCET/PG-Dental/PBBSc/BPT/AHS-lateral links were leaking
-into UGCET/UGNEET's manifests — see LINK.md's "Why only these 4 KEA pages"
+into UGCET/UGNEET's manifests — see LINK.md's "Why these KEA pages"
 section for the live incident that surfaced this).
+
+**Flood guards — a broken render fails the page, never alerts it.** Two
+failure modes would otherwise alert a page's *entire* link list as "new",
+so both now fail that page's scan instead (a warning in the health chat;
+the page retries next cycle; its manifest is untouched):
+- `link_watch.py::check_link_page` raises `ContentSelectorMissingError` when
+  a page's configured `content_selector` matches nothing (maintenance page,
+  half-loaded render, redesign). `extract_all_links` itself still falls back
+  to the whole document for direct callers, but a watched page with a
+  selector never takes that path — on KEA it would alert ~250 sidebar links.
+- `headless.py::fetch_rendered_html` raises when a KEA page comes back in
+  Kannada (`is_non_english_kea_render`). Link identity includes link text,
+  and a Kannada render changes every identity on the page (12/12 on
+  `pgetmed2026`, confirmed live 2026-10-27), so a silently failed English
+  switch would otherwise alert every notice on every KEA page at once.
+
+**One alert line per document.** mcc.nic.in renders each document as three
+`<a>` tags to the same PDF (icon / title / "View(484 KB)").
+`link_watch.py::collapse_by_url` folds those into one entry (keeping the
+real title) for the alert message, the recent-links log and the new-link
+counts. Identity — and so every manifest — stays (url, text).
 
 ## Non-negotiable conventions
 

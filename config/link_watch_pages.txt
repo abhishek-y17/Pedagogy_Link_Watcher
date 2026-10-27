@@ -2,14 +2,29 @@
 # Add or remove lines freely, then commit. Blank lines and #-comments are ignored.
 # A page's FIRST scan records the links already on it and alerts on nothing;
 # you are only alerted for links added after that.
+# See LINK.md for why each URL below was chosen.
 
-https://cetonline.karnataka.gov.in/kea/ugneet2026
-https://cetonline.karnataka.gov.in/kea/pgneet2026
+# KEA (Karnataka) -- PGET-2026 (PG-NEET): Medical/DNB and Dental (MDS).
+# The KEA sidebar lists these two as "PGET- 2026 (Medical/Dental & DNB)".
+https://cetonline.karnataka.gov.in/kea/pgetmed2026
 https://cetonline.karnataka.gov.in/kea/pgden2026
 
-# MCC (national) PG/UG counselling pages -- the full-list pages, not the
-# landing pages, on purpose. See LINK.md for why.
+# KEA (Karnataka) -- UGNEET-2026 (MBBS/BDS/AYUSH)
+https://cetonline.karnataka.gov.in/kea/ugneet2026
+
+# KEA CET pages -- paused (no updates needed right now). Un-comment to resume;
+# a resumed page re-baselines itself silently on its next scan.
+# https://cetonline.karnataka.gov.in/kea/ugcet2026
+# https://cetonline.karnataka.gov.in/kea/pgcet2026
+
+# MCC (national) -- the full-list pages, not the landing pages, on purpose.
+# See LINK.md for why.
+# PG Medical (MD/MS/DNB):
 https://mcc.nic.in/current-events-pg/
 https://mcc.nic.in/eservices-schedule-pg/
+# MDS (PG Dental):
+https://mcc.nic.in/current-events-mds/
+https://mcc.nic.in/eservices-schedule-mds/
+# UG (MBBS/BDS):
 https://mcc.nic.in/current-events-ug/
 https://mcc.nic.in/eservices-schedule-ug/

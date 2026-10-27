@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ..monitor.link_watch import LinkWatchResult
+from ..monitor.link_watch import LinkWatchResult, collapse_by_url
 from . import telegram_api as tg
 
 # Telegram's hard limit is 4096 chars. Leave room for the "(part 12/34)\n"
@@ -25,13 +25,13 @@ MAX_ALERT_CHARS = 3800
 def format_link_alert_message(results: list[LinkWatchResult], timestamp: str | None = None) -> str:
     timestamp = timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     new_results = [result for result in results if result.ok and result.new_links]
-    total_new = sum(len(result.new_links) for result in new_results)
+    total_new = sum(len(collapse_by_url(result.new_links)) for result in new_results)
 
     lines = [f"New link(s) detected — {timestamp}", f"Total new links: {total_new}"]
     for result in new_results:
         lines.append("")
         lines.append(f"Source page: {result.page.url}")
-        for link in result.new_links:
+        for link in collapse_by_url(result.new_links):
             label = link.text or "(no link text)"
             lines.append(f"- {label}")
             lines.append(f"  {link.url}")

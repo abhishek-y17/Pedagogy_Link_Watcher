@@ -98,3 +98,21 @@ def test_single_chunk_has_no_part_prefix(monkeypatch):
     post_link_alerts("TOKEN", "-100", [_result(n_new=1)])
     assert len(sent) == 1
     assert not sent[0].startswith("(part ")
+
+
+def test_message_lists_each_mcc_document_once_with_its_title():
+    # mcc.nic.in: icon link, title link and "View(size)" link all point at
+    # the same PDF -- one new document must be one alert entry, not three.
+    page = LinkWatchPage(key="current_events_mds", name="mds",
+                         url="https://mcc.nic.in/current-events-mds/")
+    pdf = "https://cdnbbsr.s3waas.gov.in/uploads/2026/10/doc.pdf"
+    new_links = [PageLink(pdf, pdf, ""), PageLink(pdf, pdf, "Round 2 Result MDS"),
+                 PageLink(pdf, pdf, "View(484 KB)")]
+    result = LinkWatchResult(page=page, ok=True, links=new_links, new_links=new_links)
+
+    text = format_link_alert_message([result], timestamp="T")
+
+    assert "Total new links: 1" in text
+    assert text.count(pdf) == 1
+    assert "- Round 2 Result MDS" in text
+    assert "View(484 KB)" not in text and "(no link text)" not in text

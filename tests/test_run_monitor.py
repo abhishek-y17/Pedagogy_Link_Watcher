@@ -136,3 +136,40 @@ def test_main_once_returns_1_on_unhandled_exception(tmp_path, monkeypatch):
     monkeypatch.setattr(rm, "run_cycle", _boom)
 
     assert rm.main(["--once", "--no-notify", "--no-health"]) == 1
+
+
+def test_cycle_mcc_triplet_is_one_alert_and_one_log_line_and_broken_page_only_warns(
+    tmp_path, monkeypatch,
+):
+    from neet_pipeline.monitor import recent_links
+    from neet_pipeline.notifier import link_alerts
+
+    _isolate(monkeypatch, tmp_path)
+    mds = LinkWatchPage(key="current_events_mds", name="https://mcc.nic.in/current-events-mds/",
+                        url="https://mcc.nic.in/current-events-mds/", content_selector="main")
+    kea = LinkWatchPage(key="kea_pgetmed2026", name="https://cetonline.karnataka.gov.in/kea/pgetmed2026",
+                        url="https://cetonline.karnataka.gov.in/kea/pgetmed2026",
+                        content_selector=".card-deck")
+    cfg = _cfg(mds, kea)
+    lw.write_link_manifest(mds.key, set())
+    lw.write_link_manifest(kea.key, set())
+    pdf = "https://cdnbbsr.s3waas.gov.in/uploads/2026/10/r2.pdf"
+    pages = {
+        mds.url: (f'<main><a href="{pdf}"><img></a><a href="{pdf}">Round 2 Result MDS</a>'
+                  f'<a href="{pdf}">View(1 MB)</a></main>'),
+        # KEA maintenance page: sidebar only, no .card-deck
+        kea.url: '<nav>' + ''.join(f'<a href="/kea/p{i}.aspx">P{i}</a>' for i in range(50)) + '</nav>',
+    }
+    monkeypatch.setattr(lw, "fetch_rendered_html", lambda url: pages[url])
+    sent = []
+    monkeypatch.setattr(rm.tg, "get_credentials", lambda *a, **k: ("T", "C"))
+    monkeypatch.setattr(link_alerts.tg, "send_message", lambda t, c, text: sent.append(text))
+
+    summary = rm.run_cycle(cfg, notify=True)
+
+    assert summary.new_links_count == 1
+    assert len(sent) == 1 and sent[0].count(pdf) == 1 and "P1" not in sent[0]
+    assert len(recent_links.read_recent(mds.key)) == 1
+    assert rm._summary_failure(summary) is None  # one page broken != all failed
+    assert any("ContentSelectorMissingError" in w for w in rm._summary_warnings(summary))
+    assert lw.read_link_manifest(kea.key) == set()  # broken page recorded nothing

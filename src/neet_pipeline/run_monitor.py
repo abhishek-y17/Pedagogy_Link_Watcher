@@ -28,7 +28,8 @@ from datetime import datetime
 
 from .monitor.config import load_config, DEFAULT_LOOP_INTERVAL
 from .monitor.watched_pages import DEFAULT_LINK_WATCH_PAGES_TXT
-from .monitor.link_watch import LinkWatchResult, check_link_page, persist_link_result
+from .monitor.link_watch import (LinkWatchResult, check_link_page, collapse_by_url,
+                                 persist_link_result)
 from .monitor import recent_links
 from .notifier import telegram_api as tg
 from .notifier import health as health_mod
@@ -61,7 +62,8 @@ class MonitorRunSummary:
 
     @property
     def new_links_count(self) -> int:
-        return sum(len(result.new_links) for result in self.link_results if result.ok)
+        return sum(len(collapse_by_url(result.new_links))
+                   for result in self.link_results if result.ok)
 
 
 def _next_cycle() -> int:
@@ -114,7 +116,7 @@ def _check_link_watch_pages(cfg) -> list[LinkWatchResult]:
             log(f"[link-watch] {page.name} - baselined {len(result.links)} link(s) "
                 f"(new page, no alerts this scan)")
         elif result.ok:
-            log(f"[link-watch] {page.name} - {len(result.new_links)} new link(s), "
+            log(f"[link-watch] {page.name} - {len(collapse_by_url(result.new_links))} new link(s), "
                 f"{len(result.links)} total link(s)")
         else:
             log(f"[link-watch] {page.name} - FAILED: {result.error}")
@@ -124,7 +126,7 @@ def _check_link_watch_pages(cfg) -> list[LinkWatchResult]:
 
 def _post_link_alerts_and_persist(results: list[LinkWatchResult], notify: bool,
                                   env_path: str) -> int:
-    new_links_count = sum(len(result.new_links) for result in results if result.ok)
+    new_links_count = sum(len(collapse_by_url(result.new_links)) for result in results if result.ok)
     messages_sent = 0
     if new_links_count and notify:
         token, chat_id = tg.get_credentials(env_path)
@@ -139,7 +141,8 @@ def _post_link_alerts_and_persist(results: list[LinkWatchResult], notify: bool,
     for result in results:
         persist_link_result(result)
         if result.ok and result.new_links:
-            recent_links.record_new_links(result.page.key, result.page.name, result.new_links)
+            recent_links.record_new_links(result.page.key, result.page.name,
+                                          collapse_by_url(result.new_links))
     return messages_sent
 
 

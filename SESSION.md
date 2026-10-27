@@ -139,3 +139,109 @@ entry link) and the monitor re-run live against the real site with
   self-healing confirmed via the removed-link round-trip above).
 
 
+
+## 2026-10-27
+
+### Problems reported
+
+"Lot of errors", PG-NEET is top priority, add the KEA/MCC PG and dental
+pages properly, pause CET, re-baseline before the office install
+(2026-10-28), and test rigorously.
+
+### Root causes found
+
+1. **`kea/pgneet2026` is HTTP 404** -- that page doesn't exist, so it failed
+   every scan (a WARNING in every health batch). KEA's PG-Medical notices
+   page is `kea/pgetmed2026` (sidebar: "PGET- 2026 (Medical/Dental & DNB)"
+   -> "PG-Medical/DNB"). `pgneet2026` is only the path of KEA's application
+   portal (`/pgneet2026/forms/login.aspx`).
+2. **CI was red**: commit 414cbf6 swapped the URLs without updating
+   `test_load_real_link_watch_pages_txt` (1 failed / 92 passed).
+3. **MCC MDS (PG Dental) wasn't watched at all.** MCC has a separate MDS
+   section (`/mds-counselling/`), live for 2026.
+4. **Stale baseline.** Manifests were last baselined 2026-09-22; the live
+   sites had moved on by ~130 links (UGNEET's manifest still held 312
+   pre-scoping entries vs 126 real). Installing on those would have
+   flooded the alerts chat on the first scan.
+5. **Latent flood risks found while testing** (no live incident yet):
+   a Kannada render changes every KEA link identity (12/12 on
+   pgetmed2026, confirmed live), and a page missing `.card-deck` fell back
+   to the whole document (~250 sidebar links). Either would alert a whole
+   page as "new".
+6. **MCC triple alert lines**: each MCC document is 3 `<a>` tags to one
+   PDF (icon / title / "View(484 KB)"), so one notice = 3 alert lines.
+
+### Changes
+
+- `config/link_watch_pages.txt`: `pgneet2026` -> `pgetmed2026`; added
+  `mcc.nic.in/current-events-mds/` + `eservices-schedule-mds/`; UGCET/PGCET
+  commented out (paused). 9 pages total.
+- `headless.py`: `is_non_english_kea_render` -- a Kannada render fails the
+  page's scan instead of being returned.
+- `link_watch.py`: `ContentSelectorMissingError` -- a watched page whose
+  selector matches nothing fails its scan instead of whole-page fallback;
+  `collapse_by_url` -- one alert/log entry per document URL, real title
+  preferred over "View(...)" labels. Manifest identity unchanged.
+- `link_alerts.py` / `run_monitor.py`: use `collapse_by_url` for the
+  message, the recent-links log and all new-link counts.
+- Docs: LINK.md (page table, paused/404/considered pages, MDS), CLAUDE.md
+  (flood guards, collapse).
+
+### Testing
+
+- Unit suite: **110 passed** (was 1 failed / 92 passed). 17 new tests:
+  `test_headless_fetch.py` (fake playwright: English/Kannada/no-dropdown,
+  429/503 -> RateLimitedError, 403/404/500 -> plain error), selector-missing
+  guard, collapse (MCC markup, short titles vs "View(...)"), end-to-end
+  cycle (1 MCC doc -> 1 alert line + 1 log line; broken KEA page -> warning
+  only, manifest untouched), real-config test rewritten for the 9 pages.
+- **Mutation check**: disabling each guard in turn made its tests fail
+  (Kannada guard: 1, selector guard: 2, collapse: 6); restored -> green.
+- Live probe of every candidate page: all reachable from India, selector
+  matched exactly once on each, and no page-specific KEA link sits outside
+  `.card-deck` (checked by diffing pgetmed/pgden/ugneet against each other).
+- **Live baseline** (stale manifests deleted first, not merged):
+  pgetmed 12, pgden 37, ugneet 126, MCC pg 20+14, mds 38+32, ug 42+26.
+- **3 consecutive live `--once` scans**: 27/27 page-scans OK, 0 new links,
+  identical counts every run.
+- **Live detection round-trip**: removed a real KEA PG-Medical notice and
+  all 3 anchors of a real MCC MDS document from their manifests, ran a real
+  cycle with Telegram send stubbed to capture text -> exactly 2 new links,
+  1 message, one clean line per document; next cycle 0 new, manifests
+  byte-identical to the baseline. Test artifacts removed from the logs.
+- No Telegram messages were sent during any of the above.
+
+### Real Telegram test (on request), then a final no-send pass
+
+- **One real alert sent, deliberately**: the KEA PG-Medical
+  "Notification_22/10/2026" identity was removed from its manifest and a
+  real `--once` posted it to the alerts group ("NEET Result Alerts") at
+  19:03 -- user confirmed receipt. It is a genuine 22/10 notice re-sent as
+  a test, not a new publication. Then a real `--loop` ran 4 cycles (36
+  page-scans, 0 new, 0 failed) and was stopped before the 10-run health
+  batch, so no heartbeat was posted. Afterwards: the test entry was removed
+  from `recent_links_kea_pgetmed2026.log`, `health_state.json` was reset
+  (so the office's first heartbeat doesn't include these runs), and all 9
+  manifests verified byte-identical to the baseline.
+- **Telegram credentials, no message sent** (`getMe`/`getChat`/
+  `getChatMember`): alerts bot @neet_result_alerts_bot and health bot
+  @pes_healthMonitor_bot both valid, both administrators in their groups.
+- **Final no-send pass**: 110 unit tests; 3 more live dry runs (27/27 OK,
+  0 new); a **fresh-PC simulation** (code + page list only, no
+  `data/cache`) -> `--baseline` then `--once` clean, and its baseline is
+  byte-identical to the committed one; a live **4-page round-trip** in that
+  copy (KEA PG-Medical, KEA PG-Dental, MCC PG, MCC MDS -- one real document
+  removed from each) -> each detected exactly once, one 4-entry message
+  captured (Telegram's low-level call stubbed to fail on any real request),
+  next cycle silent, manifests healed identically.
+
+### Office install checklist (2026-10-28)
+
+1. `git pull` (brings the fresh baseline in `data/cache`).
+2. SETUP.bat if the PC has no `.venv` yet; fill `config\.env`.
+3. Start (START_MONITOR.bat or INSTALL_AUTOSTART.bat). Do **not** delete
+   `data\cache` -- the first scan then alerts only what KEA/MCC published
+   since this baseline (real news). Only run `--baseline` again if the
+   office wants to start with zero alerts.
+4. Within ~10 runs, the health chat should show a batch with FAILED: 0 and
+   no WARNING lines. A full 9-page cycle takes ~45-60s.

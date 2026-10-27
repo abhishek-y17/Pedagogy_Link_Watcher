@@ -86,15 +86,46 @@ def fetch_rendered_html(url: str, timeout_ms: int = 30000) -> str:
                 )
             _try_switch_to_english(page, timeout_ms)
             try:
-                return page.content()
+                html = page.content()
             except Exception:
                 # a postback triggered by the language switch may still be
                 # settling -- give it a moment and read once more.
                 page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
                 page.wait_for_timeout(500)
-                return page.content()
+                html = page.content()
+            if is_non_english_kea_render(html):
+                raise RuntimeError(
+                    f"{url} rendered in Kannada -- the English language switch did not "
+                    f"take. Skipping this scan rather than alerting every link on the "
+                    f"page under its Kannada text; the next scan retries."
+                )
+            return html
         finally:
             browser.close()
+
+
+def is_non_english_kea_render(html: str) -> bool:
+    """
+    True when `html` carries KEA's `#ddlLanguage` dropdown with an English
+    option, but the server-selected option is not English.
+
+    Link identity is (url, link text), and KEA renders every link's text in
+    the selected language -- confirmed live 2026-10-27: a Kannada render of
+    kea/pgetmed2026 changed 12 of 12 identities. So if
+    `_try_switch_to_english` silently fails on one run, every link on every
+    KEA page would alert as "new". Failing that page's scan instead keeps
+    the problem in the health chat, not the alerts chat.
+
+    Checks the returned HTML (ASP.NET marks the active option with
+    `selected="selected"` after the postback), not the live browser state.
+    """
+    from bs4 import BeautifulSoup
+
+    select = BeautifulSoup(html or "", "html.parser").select_one("#ddlLanguage")
+    if select is None or select.select_one("option[value='E']") is None:
+        return False
+    selected = select.select_one("option[selected]")
+    return selected is None or selected.get("value") != "E"
 
 
 def _try_switch_to_english(page, timeout_ms: int) -> None:

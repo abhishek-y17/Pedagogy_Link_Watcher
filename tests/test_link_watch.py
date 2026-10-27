@@ -229,3 +229,88 @@ def test_link_manifest_survives_simulated_restart(tmp_path, monkeypatch):
     second = lw.check_link_page(page)
     assert second.new_links == []
     assert lw.link_manifest_path(page.key).endswith("links_kea_ugneet2026.json")
+
+
+def test_check_link_page_fails_instead_of_flooding_when_content_selector_missing(
+    tmp_path, monkeypatch,
+):
+    # A maintenance page / half-loaded render without .card-deck must NOT
+    # fall back to the whole document -- on KEA that would alert the ~250
+    # shared sidebar links as "new". Fail the scan; leave the manifest alone.
+    monkeypatch.setattr(manifest_mod, "CACHE_DIR", str(tmp_path))
+    page = _page(content_selector=".card-deck")
+    lw.write_link_manifest(page.key, {lw.LinkIdentity(
+        "https://cetonline.karnataka.gov.in/kea/doc.pdf?id=1", "Round 1 Result")})
+    sidebar_only = ''.join(f'<nav><a href="/kea/prog{i}.aspx">Program {i}</a></nav>'
+                           for i in range(250))
+    monkeypatch.setattr(lw, "fetch_rendered_html", lambda url: sidebar_only)
+
+    result = lw.check_link_page(page)
+
+    assert result.ok is False
+    assert result.new_links == []
+    assert "ContentSelectorMissingError" in result.error and ".card-deck" in result.error
+    lw.persist_link_result(result)  # a failed result must not touch the manifest
+    assert len(lw.read_link_manifest(page.key)) == 1
+
+
+def test_check_link_page_without_selector_still_scans_whole_page(tmp_path, monkeypatch):
+    # hosts with no confirmed selector keep the old whole-page behavior
+    monkeypatch.setattr(manifest_mod, "CACHE_DIR", str(tmp_path))
+    page = _page()
+    lw.write_link_manifest(page.key, set())
+    monkeypatch.setattr(lw, "fetch_rendered_html",
+                        lambda url: '<div><a href="/kea/x.pdf">X</a></div>')
+    result = lw.check_link_page(page)
+    assert result.ok and [link.text for link in result.new_links] == ["X"]
+
+
+# Real mcc.nic.in markup shape (confirmed live 2026-10-27): every document
+# is an icon link, a title link and a "View(size)" link, all to the same PDF.
+def _mcc_item(n, title):
+    pdf = f"https://cdnbbsr.s3waas.gov.in/uploads/2026/10/doc{n}.pdf"
+    return (f'<li><a href="{pdf}"><img src="pdf.png"></a>'
+            f'<a href="{pdf}">{title}</a><a href="{pdf}">View(484 KB)</a></li>')
+
+
+def test_collapse_by_url_keeps_one_entry_per_document_with_best_text():
+    html = "<main><ul>" + _mcc_item(1, "Round 1 Result MDS") + _mcc_item(2, "Seat Matrix") + "</ul></main>"
+    links = lw.extract_all_links(html, "https://mcc.nic.in/current-events-mds/", content_selector="main")
+    assert len(links) == 6  # identities stay (url, text) -- manifest unchanged
+    collapsed = lw.collapse_by_url(links)
+    assert [link.text for link in collapsed] == ["Round 1 Result MDS", "Seat Matrix"]
+
+
+def test_collapse_by_url_keeps_distinct_urls_and_order():
+    a = lw.PageLink("https://x/a.pdf", "https://x/a.pdf", "")
+    b = lw.PageLink("https://x/b.pdf", "https://x/b.pdf", "B")
+    a2 = lw.PageLink("https://x/a.pdf", "https://x/a.pdf", "A title")
+    assert [(l.url, l.text) for l in lw.collapse_by_url([a, b, a2])] == [
+        ("https://x/a.pdf", "A title"), ("https://x/b.pdf", "B")]
+    assert lw.collapse_by_url([]) == []
+
+
+def test_new_mcc_document_is_one_alert_entry_end_to_end(tmp_path, monkeypatch):
+    monkeypatch.setattr(manifest_mod, "CACHE_DIR", str(tmp_path))
+    page = LinkWatchPage(key="current_events_mds", name="https://mcc.nic.in/current-events-mds/",
+                         url="https://mcc.nic.in/current-events-mds/", content_selector="main")
+    before = "<header><a href='/'>Home</a></header><main><ul>" + _mcc_item(1, "Old") + "</ul></main>"
+    monkeypatch.setattr(lw, "fetch_rendered_html", lambda url: before)
+    lw.persist_link_result(lw.check_link_page(page))  # baseline
+
+    after = before.replace("<ul>", "<ul>" + _mcc_item(2, "Round 2 Result MDS 2026"))
+    monkeypatch.setattr(lw, "fetch_rendered_html", lambda url: after)
+    result = lw.check_link_page(page)
+
+    assert len(result.new_links) == 3
+    assert [link.text for link in lw.collapse_by_url(result.new_links)] == ["Round 2 Result MDS 2026"]
+
+
+def test_collapse_by_url_prefers_short_real_title_over_generic_view_label():
+    pdf = "https://x/n.pdf"
+    links = [lw.PageLink(pdf, pdf, "View(484 KB)"), lw.PageLink(pdf, pdf, "Notice"),
+             lw.PageLink(pdf, pdf, "")]
+    assert lw.collapse_by_url(links)[0].text == "Notice"
+    # only generic labels available -> still shows one (better than blank)
+    only_generic = [lw.PageLink(pdf, pdf, ""), lw.PageLink(pdf, pdf, "View(2 MB)")]
+    assert lw.collapse_by_url(only_generic)[0].text == "View(2 MB)"

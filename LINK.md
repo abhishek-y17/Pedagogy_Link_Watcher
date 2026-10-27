@@ -9,14 +9,37 @@ those choices, kept separate so it doesn't get lost in a config comment.
 
 | URL | Site | Why this one |
 |---|---|---|
-| `https://cetonline.karnataka.gov.in/kea/ugneet2026` | KEA (Karnataka) | Karnataka NEET-UG counselling notices/results |
-| `https://cetonline.karnataka.gov.in/kea/ugcet2026` | KEA (Karnataka) | Karnataka UGCET counselling notices/results |
-| `https://cetonline.karnataka.gov.in/kea/pgcet2026` | KEA (Karnataka) | Karnataka PGCET (MBA/MCA/M.Tech/M.Arch) counselling notices/results |
-| `https://cetonline.karnataka.gov.in/kea/pgden2026` | KEA (Karnataka) | Karnataka PG-Dental counselling notices/results |
-| `https://mcc.nic.in/current-events-pg/` | MCC (national) | Full list of PG counselling notices/results (see below — not the landing page) |
-| `https://mcc.nic.in/eservices-schedule-pg/` | MCC (national) | Full list of PG round schedules |
+| `https://cetonline.karnataka.gov.in/kea/pgetmed2026` | KEA (Karnataka) | **PG-NEET priority.** Karnataka PGET-2026 PG-Medical/DNB (MD/MS) counselling notices/results |
+| `https://cetonline.karnataka.gov.in/kea/pgden2026` | KEA (Karnataka) | Karnataka PGET-2026 PG-Dental (MDS) counselling notices/results |
+| `https://cetonline.karnataka.gov.in/kea/ugneet2026` | KEA (Karnataka) | Karnataka NEET-UG (MBBS/BDS/AYUSH) counselling notices/results |
+| `https://mcc.nic.in/current-events-pg/` | MCC (national) | Full list of PG Medical (MD/MS/DNB) notices/results (see below — not the landing page) |
+| `https://mcc.nic.in/eservices-schedule-pg/` | MCC (national) | Full list of PG Medical round schedules |
+| `https://mcc.nic.in/current-events-mds/` | MCC (national) | Full list of MDS (PG Dental) notices/results |
+| `https://mcc.nic.in/eservices-schedule-mds/` | MCC (national) | Full list of MDS round schedules |
 | `https://mcc.nic.in/current-events-ug/` | MCC (national) | Full list of UG counselling notices/results |
 | `https://mcc.nic.in/eservices-schedule-ug/` | MCC (national) | Full list of UG round schedules |
+
+**Paused (commented out in the `.txt`):** `kea/ugcet2026` and `kea/pgcet2026`
+(engineering/MBA CET — no updates needed for now). Their manifests were
+deleted on purpose, so un-commenting either re-baselines it silently on
+its next scan instead of alerting a month of backlog.
+
+**Not a page — don't add it:** `kea/pgneet2026` returns HTTP 404 (it was
+watched briefly and failed every scan). KEA's PG-Medical *notices* page is
+`kea/pgetmed2026`; `pgneet2026` only exists as the path of KEA's PG-Medical
+online-application portal (`/pgneet2026/forms/login.aspx`), which is
+already linked from inside `pgetmed2026` and so is covered by watching it.
+The KEA sidebar lists both 2026 PG pages under "PGET- 2026 (Medical/Dental
+& DNB)" → "PG-Medical/DNB" (`pgetmed2026.aspx`) and "PG-Dental"
+(`pgden2026.aspx`); the `.aspx` and extensionless forms serve the same page.
+
+**Considered, not added (2026-10-27):**
+- `kea/pgayush2026` — 404; KEA has no PG-AYUSH 2026 page yet (only 2025).
+  Add it when one appears in the sidebar under ADMISSIONS.
+- `kea/pgnursing2026` (M.Sc Nursing/MPT/M.Sc AHS/M.Pharm) — exists, but
+  not a medical/dental PG program; add only if the consultancy needs it.
+- `mcc.nic.in/super-speciality-counselling/` (DM/MCh) — MCC's 4th section;
+  out of scope unless super-speciality students are tracked.
 
 ## Why the MCC *full-list* pages, not the landing pages
 
@@ -39,16 +62,16 @@ with watching the landing page directly:
    superset, the landing page is redundant once the full-list page is
    watched.
 
-## Why only these 4 KEA pages, not any other KEA sub-page
+## Why these KEA pages, not any other KEA sub-page
 
 `cetonline.karnataka.gov.in` runs a single shared sidebar/nav menu across
 every program it hosts (UGNEET, UGCET, PGCET, PG-Dental, PG-AYUSH, PG
 Nursing, etc.) — the same menu markup is present on every page. Only
-UGNEET-2026, UGCET-2026, PGCET-2026, and PG-Dental-2026 are watched
-deliberately; no other KEA sub-page (PG-AYUSH, PG-Nursing, PGET-Medical,
-older-year pages like `pgcet2025.aspx`, etc.) should be added without a
-specific reason, since each addition is another page whose own content
-plus that same shared sidebar gets diffed.
+PGET-2026 Medical (`pgetmed2026`), PGET-2026 Dental (`pgden2026`) and
+UGNEET-2026 are watched deliberately (UGCET/PGCET are paused, see above);
+no other KEA sub-page (PG-AYUSH, PG-Nursing, older-year pages like
+`pgcet2025.aspx`, etc.) should be added without a specific reason, since
+each addition is another page to scan every cycle.
 
 **Known issue this caused, now fixed:** because `extract_all_links`
 originally scanned the whole rendered page with no scoping, the shared
@@ -74,15 +97,26 @@ without touching real content. The alert message now shows a single
 anyway, since `page.name` is just the raw URL) so it's unambiguous which
 of the 4 KEA pages actually changed.
 
-## Why only 4 MCC full-list pages, not all 7
+## Why only the Current Events + Schedule full-list pages on MCC
 
-MCC's landing pages surface up to 7 "View More" targets each. Only the
+MCC has four counselling sections (UG Medical, PG Medical, **MDS**, Super
+Speciality — see its top nav). UG, PG and MDS are watched; MDS is MCC's PG
+Dental counselling and was added 2026-10-27 (MDS 2026 counselling is live:
+seat matrices, round 1-3 results). Its landing page
+`https://mcc.nic.in/mds-counselling/` has the same layout as PG's, so the
+same full-list-not-landing-page reasoning above applies:
+`current-events-mds/` and `eservices-schedule-mds/` are watched, the
+landing page is not.
+
+Each landing page surfaces several "View More" targets. Only the
 **Current Events** and **Schedule** full-list pages are watched. The other
 sections found during investigation:
 
-- `https://mcc.nic.in/news-events-pg/`, `https://mcc.nic.in/news-events-ug-medical/`
-  ("News & Events") — mostly press-style announcements, not counselling
-  actions.
+- `https://mcc.nic.in/news-events-pg/`, `https://mcc.nic.in/news-events-ug-medical/`,
+  `https://mcc.nic.in/news-events-mds/` ("News & Events") — mostly
+  press-style announcements, not counselling actions.
+- `https://mcc.nic.in/about-pg-medical/`, `https://mcc.nic.in/about-mds/`
+  ("About") — static description pages.
 - `https://mcc.nic.in/important-link-ug/` ("Important Link") — static
   external portal/institute links, rarely changes.
 

@@ -35,7 +35,14 @@ DEFAULT_LOOP_INTERVAL = 60
 # alerts), a 4-link <section class="pu-text"> banner (just "Home"/
 # "Admissions"), and a 15-link shared <footer> -- around a single
 # `div.card-deck` that holds only that page's own notices. ".card-deck"
-# scopes to that div.
+# scopes to that div. Re-confirmed 2026-10-27 on pgetmed2026/pgden2026/
+# ugneet2026 (exactly one match each, no page-specific link outside it), and
+# MCC's MDS full-list pages (current-events-mds/eservices-schedule-mds) use
+# the same "main" layout as PG/UG.
+#
+# If a page's selector matches nothing, link_watch.py::check_link_page fails
+# that page's scan rather than falling back to the whole document -- see
+# ContentSelectorMissingError there.
 _CONTENT_SELECTOR_BY_HOST = {
     "mcc.nic.in": "main",
     "cetonline.karnataka.gov.in": ".card-deck",

@@ -241,9 +241,52 @@ def extract_all_links(html: str, base_url: str, volatile_params: frozenset = fro
     return sorted(seen.values(), key=lambda link: (link.normalized_url, link.text, link.url))
 
 
+class ContentSelectorMissingError(RuntimeError):
+    """The page's configured content_selector matched nothing in the
+    rendered HTML (maintenance page, half-loaded render, site redesign)."""
+
+
+# Generic per-document labels ("View(484 KB)", "Download") -- never the
+# document's real title, so they lose to any other text for the same URL.
+_GENERIC_LINK_TEXT_RE = re.compile(r"\A(view|download|click here)\b", re.IGNORECASE)
+
+
+def _text_rank(text: str) -> tuple[bool, int]:
+    return (bool(text) and not _GENERIC_LINK_TEXT_RE.match(text), len(text))
+
+
+def collapse_by_url(links: list[PageLink]) -> list[PageLink]:
+    """
+    One entry per normalized URL, keeping the most descriptive link text
+    (a real title over a generic "View(...)" label, then the longest), in
+    first-seen order. For display/counting only -- identity (and so the
+    manifest) stays (url, text).
+
+    mcc.nic.in renders every document as three <a> tags to the same PDF: an
+    icon (no text), the title, and "View(484 KB)" -- confirmed live
+    2026-10-27. Without this, one new MCC notice is three alert lines.
+    """
+    best: dict[str, PageLink] = {}
+    for link in links:
+        current = best.get(link.normalized_url)
+        if current is None or _text_rank(link.text) > _text_rank(current.text):
+            best[link.normalized_url] = link
+    return list(best.values())
+
+
 def check_link_page(page: LinkWatchPage) -> LinkWatchResult:
     try:
         html = fetch_rendered_html(page.url)
+        if page.content_selector and not BeautifulSoup(html or "", "html.parser").select(
+                page.content_selector):
+            # extract_all_links would fall back to the whole document here,
+            # which on a watched page means alerting the entire shared
+            # nav/footer (~250 links on KEA) as "new". Fail the scan instead
+            # so it shows up in the health chat and retries next cycle.
+            raise ContentSelectorMissingError(
+                f"content area {page.content_selector!r} not found on {page.url} -- "
+                f"page did not fully render, or the site layout changed"
+            )
         links = extract_all_links(html, page.url, content_selector=page.content_selector)
         manifest_present = link_manifest_exists(page.key)
         known = read_link_manifest(page.key)
