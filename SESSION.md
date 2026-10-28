@@ -245,3 +245,62 @@ pages properly, pause CET, re-baseline before the office install
    office wants to start with zero alerts.
 4. Within ~10 runs, the health chat should show a batch with FAILED: 0 and
    no WARNING lines. A full 9-page cycle takes ~45-60s.
+
+## 2026-10-28 (office install)
+
+### Checks
+
+- Repo at origin/main; 110 unit tests passed; `.venv` and `config\.env`
+  present. Both bots verified read-only (`getMe`/`getChat`/`getChatMember`):
+  @neet_result_alerts_bot -> "NEET Result Alerts", @pes_healthMonitor_bot
+  -> "pes_bot_healthMonitor", both administrators.
+- All 9 pages reachable from the office connection; counts match yesterday's
+  baseline plus today's additions (pgetmed 13, pgden 38, ugneet 126, MCC
+  pg 20+14, mds 38+32, ug 42+26). No false new links.
+
+### New links since the 2026-10-27 baseline
+
+Previewed with a dry run against a backed-up `data\cache` (restored
+afterwards so the real run could still alert them), then posted for real
+at 16:59-17:00 in one message:
+
+- pgetmed2026: "PG MEDICAL/ DENTAL - 2026 PRINT APPLICATION LINK.
+  28/10/2026" -> `cetonline.karnataka.gov.in/pgneet2026_print/forms/login.aspx`
+- pgden2026: "PG - MDS 2026 Provisional Vacant seat for third
+  round.28-10-2026" -> `keawebentry456/pgden2026/PGDENTAL_R3english.pdf`
+
+### Incidents
+
+- **Second, stale monitor instance on another machine.** At 17:04:49 the
+  alerts group got a 53-link message in the pre-September format (MCC
+  documents as 3 lines each, KEA sidebar links on ugneet2026). Not from
+  this PC (only one `run_monitor` process here, no scheduled task) or from
+  GitHub (Actions only runs tests). It was an old install with a weeks-old
+  manifest; all but the MDS 28-10 notice were 7-24 October backlog. Also
+  the likely source of the 2026-10-12 "Run #9838 FAILED ... sendMessage:
+  ConnectionError" health message (this install's counter was reset to 1
+  on 2026-10-27). User is removing it. **Only one machine may run the
+  monitor** -- two instances double-post every alert and heartbeat.
+- **Telegram ConnectionError (2026-10-12) fixed.** `telegram_api._post` now
+  retries `requests.ConnectionError` (incl. ConnectTimeout) after 5s and
+  15s before failing the run. ReadTimeout / HTTP errors are not retried,
+  since the message may already have been delivered. Links were never lost
+  on that failure (manifests persist only after a successful post); the
+  run just showed as FAILED. 3 new tests; suite 113 passed.
+- One transient `ERR_CONNECTION_TIMED_OUT` on KEA pgetmed2026 (cycle 19),
+  recovered next cycle; reported as a WARNING in the health batch, as
+  designed.
+
+### Health chat verified end-to-end
+
+A real `--loop` ran cycles 18-26 here (after the real `--once`, cycle 17).
+The 10-run batch posted to the health group: runs #2-#11, OK 10/10,
+FAILED 0, SKIPPED 0, new links 2, one WARNING (the cycle-19 timeout). The
+loop was then stopped and `data\cache` committed as the baseline for the
+machine that runs autostart.
+
+### Autostart
+
+Registering the `KEALinkWatch` Task Scheduler job from Claude Code was
+blocked by its permission check; run `INSTALL_AUTOSTART.bat` by hand on
+the one machine chosen to be the monitor.

@@ -126,8 +126,59 @@ def test_transport_error_does_not_leak_token(monkeypatch):
         raise tg.requests.ConnectTimeout(f"timed out calling {url}")
 
     monkeypatch.setattr(tg.requests, "post", fake_post)
+    monkeypatch.setattr(tg.time, "sleep", lambda s: None)
     with pytest.raises(RuntimeError) as exc_info:
         tg.send_message(secret, "-100", "hello")
 
     assert secret not in str(exc_info.value)
     assert "sendMessage" in str(exc_info.value)
+
+
+def test_connection_error_is_retried_then_succeeds(monkeypatch):
+    """Live 2026-10-12: one internet blip failed the whole run with
+    'Telegram API request failed on sendMessage: ConnectionError'."""
+    calls, sleeps = [], []
+
+    def fake_post(url, data=None, files=None, timeout=None):
+        calls.append(url)
+        if len(calls) < 3:
+            raise tg.requests.ConnectionError("network unreachable")
+        return _FakeResponse({"ok": True, "result": {"message_id": 5}})
+
+    monkeypatch.setattr(tg.requests, "post", fake_post)
+    monkeypatch.setattr(tg.time, "sleep", sleeps.append)
+
+    assert tg.send_message("TOKEN", "-100", "hi") == {"message_id": 5}
+    assert len(calls) == 3
+    assert sleeps == list(tg.RETRY_DELAYS)
+
+
+def test_connection_error_gives_up_after_all_retries(monkeypatch):
+    calls = []
+
+    def fake_post(url, data=None, files=None, timeout=None):
+        calls.append(url)
+        raise tg.requests.ConnectionError("still down")
+
+    monkeypatch.setattr(tg.requests, "post", fake_post)
+    monkeypatch.setattr(tg.time, "sleep", lambda s: None)
+
+    with pytest.raises(RuntimeError, match="ConnectionError"):
+        tg.send_message("TOKEN", "-100", "hi")
+    assert len(calls) == len(tg.RETRY_DELAYS) + 1
+
+
+def test_read_timeout_is_not_retried(monkeypatch):
+    """The request may have reached Telegram -- retrying could double-post."""
+    calls = []
+
+    def fake_post(url, data=None, files=None, timeout=None):
+        calls.append(url)
+        raise tg.requests.ReadTimeout("no response")
+
+    monkeypatch.setattr(tg.requests, "post", fake_post)
+    monkeypatch.setattr(tg.time, "sleep", lambda s: None)
+
+    with pytest.raises(RuntimeError):
+        tg.send_message("TOKEN", "-100", "hi")
+    assert len(calls) == 1

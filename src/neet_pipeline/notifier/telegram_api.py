@@ -12,6 +12,7 @@ getUpdates and inline-keyboard reply_markup are gone with them.
 
 from __future__ import annotations
 import os
+import time
 import requests
 from dotenv import dotenv_values
 
@@ -61,11 +62,30 @@ DEFAULT_TIMEOUT = 30
 # answerCallbackQuery, ...) keep the short one.
 UPLOAD_TIMEOUT = 180
 
+# A brief internet blip on the office PC ("RuntimeError: Telegram API request
+# failed on sendMessage: ConnectionError", seen live 2026-10-12) used to fail
+# the whole run. Only ConnectionError (incl. ConnectTimeout) is retried: the
+# request never reached Telegram, so a retry can't post a duplicate. A
+# ReadTimeout or HTTP error is not retried -- the message may already be sent.
+RETRY_DELAYS = (5, 15)
+
+
+def _post(url: str, params: dict, files, timeout: int):
+    for delay in RETRY_DELAYS:
+        try:
+            return requests.post(url, data=params, files=files, timeout=timeout)
+        except requests.ConnectionError:
+            time.sleep(delay)
+            if files:
+                for f in files.values():
+                    f.seek(0)
+    return requests.post(url, data=params, files=files, timeout=timeout)
+
 
 def _call(token: str, method: str, files=None, timeout: int = DEFAULT_TIMEOUT, **params):
     url = API_BASE.format(token=token, method=method)
     try:
-        resp = requests.post(url, data=params, files=files, timeout=timeout)
+        resp = _post(url, params, files, timeout)
         resp.raise_for_status()
     except requests.RequestException as e:
         # Telegram requires the bot token in the URL. requests includes that
